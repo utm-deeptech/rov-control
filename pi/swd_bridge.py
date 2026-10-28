@@ -11,9 +11,9 @@ ARM/DISARM are ACKed only after the chip's own armed flag has been read back as 
 import argparse
 import logging
 import os
-import re
 import select
 import socket
+import struct
 import subprocess
 import sys
 import time
@@ -31,17 +31,31 @@ FLUSH_S, TELEM_S = 0.05, 0.1
 
 
 def symbols(elf):
-    out = subprocess.check_output(["arm-none-eabi-nm", elf], text=True)
-    return {m.group(2): int(m.group(1), 16) for m in re.finditer(r"^([0-9a-f]+) [BbDd] (\w+)$", out, re.M)}
+    """Data symbol addresses from the ELF's symbol table (no arm-none-eabi-nm needed on the Pi)."""
+    with open(elf, "rb") as f:
+        d = f.read()
+    shoff, = struct.unpack_from("<I", d, 0x20)
+    shentsize, shnum = struct.unpack_from("<HH", d, 0x2e)
+    secs = [struct.unpack_from("<10I", d, shoff + i * shentsize) for i in range(shnum)]
+    out = {}
+    for s in secs:
+        if s[1] != 2:                                   # SHT_SYMTAB
+            continue
+        strtab = secs[s[6]][4]
+        for j in range(s[5] // 16):
+            name, value, _size, info = struct.unpack_from("<IIIB", d, s[4] + j * 16)
+            if info & 0xF == 1 and name:                # STT_OBJECT
+                out[d[strtab + name:d.index(b"\0", strtab + name)].decode()] = value
+    return out
 
 
 class OpenOCD:
     """Minimal OpenOCD Tcl-RPC client (port 6666, commands end with 0x1A)."""
 
-    def __init__(self, port):
+    def __init__(self, port, target):
         self.proc = subprocess.Popen(
             ["sudo", "openocd", "-d0", "-f", "interface/stlink.cfg", "-c", "set CPUTAPID 0",
-             "-f", "target/stm32f1x.cfg", "-c", "gdb_port disabled", "-c", "telnet_port disabled",
+             "-f", f"target/{target}.cfg", "-c", "gdb_port disabled", "-c", "telnet_port disabled",
              "-c", f"tcl_port {port}", "-c", "init"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.sock = None
@@ -108,7 +122,7 @@ def main():
     sym = symbols(a.elf or ELF.format(board=a.board))
     cam = Camera(not a.no_camera)
     IN, IN_LEN, OUT = sym["swd_in"], sym["swd_in_len"], sym["swd_out"]
-    oo = OpenOCD(a.tcl_port)
+    oo = OpenOCD(a.tcl_port, "stm32f4x" if a.board == "blackpill" else "stm32f1x")
     n = len(oo.read32(OUT, 12))
     log.info("SWD up: mailbox in=0x%08x len=0x%08x out=0x%08x (%d words)", IN, IN_LEN, OUT, n)
 

@@ -482,7 +482,7 @@ class MainWindow(QMainWindow):
         self.lbl_state = QLabel()
         self.lbl_state.setAlignment(Qt.AlignCenter)
         cv.addWidget(self.lbl_state)
-        hl = QLabel("PAD: Options ARM · Share/○ DISARM · L1/R1 gain · D-pad/△ lights\n"
+        hl = QLabel("PAD: Options ARM · Share/○ DISARM · L1/R1 gain · D-pad/✕ lights\n"
                     "KEYS: WASD RF QE · SPACE disarm · [ ] gain · L - = lights")
         hl.setObjectName("help")
         hl.setWordWrap(True)

@@ -118,7 +118,7 @@ Same pinout on STM32F401CC and STM32F411CE Black Pills (one binary for both):
 | GND | G | Pi GND (pin 6) — **must** be common |
 | Outputs 1-6 (thrusters) | PA6 PA7 PB0 PB1 PB6 PB7 | ESC signal wires, any order |
 | Lights (all 4) | PB8 | lights signal (1100 µs off … 1900 µs full) |
-| LED | PC13 | on = armed · off = linked/disarmed · fast blink = failsafe · flash every 2 s = no link |
+| LED | PC13 | on = armed · linked/disarmed: on while the lights are on (✕) · fast blink = failsafe · flash every 2 s = no link |
 
 Which thruster is on which output depends on the configuration. Set it in the app: **Thrusters → SETUP** (output /
 pin and reverse for each thruster; picking a used output swaps the two). It applies immediately, is locked while
@@ -146,7 +146,7 @@ The protocol contract is `protocol/PROTOCOL.md`.
 | **DISARM** | Share / Select or ○ / B | **SPACE** (always) |
 | Power limit 25/50/75/100 % | L1 / R1 | [ / ] |
 | Lights brighter / dimmer | D-pad ↑ / ↓ | = / - |
-| Lights on / off | △ / Y | L |
+| Lights on / off | ✕ / A | L |
 
 * Arming asks for confirmation once, and refuses while sticks are off-centre.
 * Disarm happens automatically when the controller disconnects, the app closes, or the link drops (board failsafe).
@@ -162,18 +162,44 @@ the thruster bars show a dim preview of what each thruster would do. Unplugging 
 Controllers: PS4/PS5 pair over Bluetooth (hold Share + PS until the light flashes) or plug in USB. PS3 works over
 USB (Bluetooth needs `sixpair`). Check what the app sees with `make gamepad-test`.
 
-## 6. Bench mode without UART wires (Blue Pill / ST-LINK only)
+## 6. Bench mode without UART wires (ST-LINK only)
 
-If the board is connected to the Pi **only** by an ST-LINK, `make pi-swd` runs `pi/swd_bridge.py` on the Pi: it feeds
-the same protocol into the firmware's RAM over SWD, so the app works unchanged (LINK OK, arming, lights, PWM readback).
-Set `firmware: board: bluepill` in the Pi's `config/local.yaml` for a Blue Pill. This is for bench testing only.
+If the board is connected to the Pi **only** by an ST-LINK, `pi/swd_bridge.py` feeds the same protocol into the
+firmware's RAM over SWD, so the app works unchanged (LINK OK, arming, lights, LED, PWM readback, video). It picks the
+OpenOCD target from `firmware: board:` (`blackpill` = STM32F4, default; `bluepill` = STM32F1, set it in the Pi's
+`config/local.yaml`). This is for bench testing only.
+
+Used on 2026-10-28 with the FXTI tether, a Black Pill (F411) on the Pi's ST-LINK and a PS3 pad, on a Pi that also
+runs other projects (no `pi/install.sh`, no `rov-bridge` service). Pi packages it needs: `stlink-tools openocd
+python3-serial python3-yaml gstreamer1.0-tools gstreamer1.0-plugins-good gstreamer1.0-plugins-bad`, plus
+`gcc-arm-none-eabi` to build firmware on the Pi.
+
+```bash
+# laptop: copy the code to the Pi (no install)
+rsync -a --exclude .venv --exclude .git --exclude __pycache__ ./ ubuntu@<pi>:rov-test/
+# Pi: flash, then start a temporary session (pauses the listed services, e.g. one that holds the camera)
+st-flash --reset write ~/rov-test/firmware/prebuilt/blackpill.bin 0x08000000
+bash ~/rov-test/pi/bench_start.sh fyp-node
+# laptop: tether address (see below), then the app with Link -> TETHER
+nmcli dev modify <tether-if> +ipv4.addresses 192.168.2.1/24
+make run
+# done: Pi
+bash ~/rov-test/pi/bench_stop.sh          # stops bridge + camera, removes 192.168.2.2, restarts paused services
+```
+
+`bench_start.sh` changes nothing permanently: the eth0 address and paused services come back after a reboot.
+`nmcli dev modify` is also temporary on the laptop: it is lost when the tether link drops (replug, power cut), so
+run it again then. On this laptop the FXTI shows up as the onboard port `enp5s0`, not an `enx...` USB interface.
+
+To rebuild and flash firmware on the Pi: stop the session first (the bridge holds the ST-LINK), then
+`cd ~/rov-test/firmware && make BOARD=blackpill && st-flash --reset write build/blackpill/rovfw.bin 0x08000000`.
 
 ## Layout
 
 ```
 config/      system.yaml (defaults) + local.yaml (per machine, git-ignored)
 firmware/    common/ (protocol core + main loop), blackpill/, bluepill/, prebuilt/
-pi/          bridge.py (UART), swd_bridge.py (bench), camera.sh, camera_supervisor.py, install.sh, setup_eth.sh
+pi/          bridge.py (UART), swd_bridge.py + bench_start/stop.sh (ST-LINK bench), camera.sh, camera_supervisor.py, install.sh, setup_eth.sh
 protocol/    PROTOCOL.md, rovproto.py (reference implementation)
 topside/     the app (PySide6), control link, controller, video
 sim/         fake board + end-to-end tests; make run-sim
@@ -185,20 +211,29 @@ sim/         fake board + end-to-end tests; make run-sim
   On the Pi: `journalctl -u rov-bridge -f` and `tail /tmp/rov_camera.log`.
 * **LINK LOST:** check the Link menu IP, `ping` the Pi, and on the Pi `journalctl -u rov-bridge -f`
   (`serial=up`, `ser_frames` should increase).
+* **Camera "Device or resource busy" / no video in bench mode:** another program has the camera open
+  (`ps aux | grep rpicam`); pause its service with `bench_start.sh <service>`. Camera exit code 127 in
+  `/tmp/rov_camera.log` = `gst-launch-1.0` missing on the Pi.
+* **swd_bridge "openocd exited" / st-flash "unable to claim":** a leftover `openocd` holds the ST-LINK:
+  `sudo pkill openocd` (`bench_start.sh` / `bench_stop.sh` do this).
+* **Tether worked, then LINK LOST after a replug or power cut:** the laptop's temporary 192.168.2.1 was dropped;
+  re-run the `nmcli dev modify` line, and on a rebooted Pi re-run `bench_start.sh`.
 * **RX BAD climbing:** UART wiring/ground, or the Pi is still on the mini-UART (re-run `pi/install.sh`, reboot).
 
 ## Status (2026-10-28)
 
 Verified:
-* Full chain on a bench Pi 4 over Wi-Fi: app → Pi → **Blue Pill** (via ST-LINK/SWD, no UART wires): arm/disarm with
-  ACK, LED, telemetry, PWM readback, live 720p30 video in the app.
-* 35 automated tests: protocol, firmware core (compiled for the laptop and checked against `rovproto.py`), mixer,
+* **FXTI tether + Black Pill (STM32F411)**, Black Pill on the Pi's ST-LINK (bench mode, section 6): app → tether →
+  Pi → Black Pill: live 720p30 video, arm/disarm with ACK, telemetry, PWM readback, onboard LED on ✕, PS3 pad over
+  USB driving the app. Tether ping ~4 ms.
+* Earlier: the same chain over Wi-Fi with a **Blue Pill**.
+* 37 automated tests: protocol, firmware core (compiled for the laptop and checked against `rovproto.py`), mixer,
   controller config, end-to-end sim (arming, PWM mapping, lights, failsafe, no auto re-arm).
 
 Not yet verified on hardware (do these first on the real ROV, props off):
-1. Flash `firmware/prebuilt/blackpill.bin` to the Black Pill, wire the UART (table above), check the app shows
-   LINK OK and `RX BAD` stays 0.
-2. `make gamepad-test` with your PS3/PS4 pad: sticks/buttons as in the Driving table.
+1. Wire the Black Pill UART (table above) and run `pi/bridge.py` / the `rov-bridge` service instead of the ST-LINK
+   bridge; check the app shows LINK OK and `RX BAD` stays 0.
+2. Check every stick direction and button on the PS3 pad against the Driving table (it connects and drives the app;
+   directions not yet checked one by one). PS4/PS5 not tried.
 3. Bench test each thruster; fix direction in `thrusters.reverse`, layout in `thrusters.mixing`.
 4. Lights: 50 % should read back 1500 µs and the lights should be half brightness.
-5. FXTI: `make network` on the laptop, Link → TETHER, video + LINK OK.

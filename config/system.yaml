@@ -91,7 +91,7 @@ gamepad:
     gain_down: leftshoulder
     lights_up: dpup
     lights_down: dpdown
-    lights_toggle: y              # Triangle
+    lights_toggle: a              # Cross (X)
 
 flash:
   address: "0x08000000"

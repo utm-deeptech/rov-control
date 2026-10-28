@@ -57,5 +57,5 @@ desktop:          ## install the app launcher in your applications menu
 pi-fake:          ## fake Blackpill on the Pi (test over the real tether, no firmware)
 	ssh -t $$($(PY) config/cfg.py pi.ssh_alias) "bash ~/$$($(PY) config/cfg.py pi.install_dir)/sim/pi_fake.sh"
 
-pi-swd:           ## bench: drive the Blue Pill through the ST-LINK on the Pi (no UART wires needed)
+pi-swd:           ## bench: drive the board through the ST-LINK on the Pi (no UART wires needed)
 	ssh -t $$($(PY) config/cfg.py pi.ssh_alias) "cd ~/$$($(PY) config/cfg.py pi.install_dir) && python3 pi/swd_bridge.py"

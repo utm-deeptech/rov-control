@@ -19,7 +19,7 @@ If this document and the simulator ever disagree, this document wins — please 
 | Black Pill (STM32F401/F411) | USART1: PA9 = TX → Pi GPIO15, PA10 = RX ← Pi GPIO14, GND ↔ GND |
 | Thruster outputs FL FR RL RR VL VR | PA6 PA7 PB0 PB1 PB6 PB7 (TIM3 CH1-4, TIM4 CH1-2), 50 Hz |
 | Lights output (all 4 lights) | PB8 (TIM4 CH3), 50 Hz, 1100 µs off … 1900 µs full |
-| Status LED | PC13: on = armed, off = linked & disarmed, fast blink = failsafe, short flash = no link |
+| Status LED | PC13: on = armed, linked & disarmed = on while lights are on (else off), fast blink = failsafe, short flash = no link |
 
 ## Frame format
 

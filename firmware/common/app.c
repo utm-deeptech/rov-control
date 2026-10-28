@@ -1,6 +1,6 @@
 /* Board-independent main loop: UART + SWD mailbox -> core, core -> outputs/LED/UART.
  *
- * LED PC13: ON = ARMED | OFF = linked, disarmed | fast blink = FAILSAFE | short flash every 2 s = no link
+ * LED PC13: ON = ARMED | linked, disarmed: on while the lights are on | fast blink = FAILSAFE | short flash every 2 s = no link
  * SWD mailbox (bench without UART wires): the Pi writes whole protocol frames into swd_in[] then swd_in_len;
  * they go through the same core_rx() as UART bytes. swd_out[] mirrors the state for the Pi to read.
  */
@@ -28,7 +28,7 @@ static void led(uint32_t now)
     int on;
     if (core_armed())            on = 1;
     else if (core_failsafe())    on = (now / 100) & 1;
-    else if (core_linked(now))   on = 0;
+    else if (core_linked(now))   on = core_lights() > LIGHTS_OFF_US;   /* bench: follows the lights button */
     else                         on = (now % 2000) < 100;
     board_led(on);
 }
