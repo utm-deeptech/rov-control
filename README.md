@@ -63,6 +63,7 @@ make setup        # apt packages (asks sudo) + .venv with pinned versions
 make test         # all green
 make run-sim      # whole system on the laptop, no hardware
 make run          # the real thing
+make desktop      # adds "ROV Control" to the applications menu
 ```
 
 ## 2. Raspberry Pi (on the ROV), once
@@ -144,6 +145,11 @@ The protocol contract is `protocol/PROTOCOL.md`.
 * **Bench test:** in the Thrusters card click a thruster (FL…VR), arm, then hold the slider (max 30 %, springs back to
   0). Use it with props off to check each thruster's direction; flip wrong ones with the Reverse tick in Thrusters → SETUP.
 * The mixing matrix and stick layout are in `config/system.yaml` (`thrusters.mixing`, `gamepad.axes`).
+
+**Is the controller connected?** The header shows a green **● PS4 CONTROLLER** chip (grey **NO CONTROLLER** when
+not), and the pad rumbles when it connects, arms and disarms. The panel under the video shows both sticks, triggers
+and buttons live, plus what the sticks are telling the ROV (FORWARD / SIDEWAYS / UP-DOWN / TURN). While disarmed
+the thruster bars show a dim preview of what each thruster would do. Unplugging or losing the controller disarms.
 
 Controllers: PS4/PS5 pair over Bluetooth (hold Share + PS until the light flashes) or plug in USB. PS3 works over
 USB (Bluetooth needs `sixpair`). Check what the app sees with `make gamepad-test`.

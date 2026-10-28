@@ -2,7 +2,7 @@
 Type=Application
 Name=ROV Control
 Comment=ROV video, gamepad control and telemetry
-Exec=@ROOT@/.venv/bin/python @ROOT@/topside/app.py
+Exec=env -u PYTHONPATH PYTHONNOUSERSITE=1 @ROOT@/.venv/bin/python @ROOT@/topside/app.py
 Path=@ROOT@
 Icon=applications-games
 Terminal=false

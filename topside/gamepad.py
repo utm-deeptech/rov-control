@@ -56,6 +56,8 @@ class Gamepad:
         self.pad = None
         self.keys = set()          # keyboard keys currently held (filled by the Qt app)
         self.prev = {}
+        self.axes = dict.fromkeys(AXES, 0.0)    # raw stick/trigger positions, for the app's controller view
+        self.held = set()                       # buttons held right now
         self.ok = False
         self.error = None
         self._scan = 0
@@ -82,6 +84,14 @@ class Gamepad:
         for dof, a in gcfg["axes"].items():
             if a["axis"] not in self._axis:
                 raise SystemExit(f"config gamepad.axes.{dof}: unknown axis '{a['axis']}' (use {', '.join(AXES)})")
+
+    def rumble(self, strength=0.6, ms=200):
+        """Short buzz as feedback (connect / arm / disarm). Silently ignored by pads without motors."""
+        try:
+            if self.pad is not None:
+                self.pad.rumble(strength, strength, int(ms))
+        except Exception:
+            pass
 
     @property
     def name(self):
@@ -111,7 +121,12 @@ class Gamepad:
                 self._scan += 1
                 if self._scan % 25 == 0 and self._open_first():      # look for a pad twice a second
                     events.append(f"connected:{self.pad.name}")
-        if self.pad is not None:
+        if self.pad is None:
+            self.axes = dict.fromkeys(AXES, 0.0)
+            self.held = set()
+        else:
+            self.axes = {n: self._axis_val(n) for n in AXES}
+            self.held = {n for n in BUTTONS if self.pad.get_button(self._btn[n])}
             for dof, a in self.cfg["axes"].items():
                 v = expo(deadzone(self._axis_val(a["axis"]), self.dz), self.expo)
                 cmd[dof] = -v if a.get("invert") else v

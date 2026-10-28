@@ -10,6 +10,12 @@ import signal
 import sys
 import time
 
+import site  # noqa: E402
+
+# Same behaviour however it's launched: ignore ~/.local packages and ROS/other PYTHONPATH entries.
+_user = site.getusersitepackages() if hasattr(site, "getusersitepackages") else ""
+sys.path[:] = [p for p in sys.path if not (_user and p.startswith(_user)) and not p.startswith("/opt/ros")]
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 for sub in ("protocol", "config", "topside"):
     sys.path.insert(0, os.path.join(ROOT, sub))
@@ -171,8 +177,8 @@ class ThrusterBars(QWidget):
         self.pwm = [None] * len(names)
         self.setFixedHeight(self.ROW * len(names) + 6)
 
-    def set_values(self, cmd, pwm):
-        self.cmd, self.pwm = cmd, pwm
+    def set_values(self, cmd, pwm, armed=True):
+        self.cmd, self.pwm, self.armed = cmd, pwm, armed
         self.update()
 
     def paintEvent(self, _):
@@ -202,7 +208,7 @@ class ThrusterBars(QWidget):
                 p.drawRoundedRect(bar, 7, 7)
             c = self.cmd[i] if i < len(self.cmd) else 0
             tx = cx + bw / 2 * max(-1, min(1, c / 1000))
-            p.setBrush(QColor(255, 255, 255, 230))
+            p.setBrush(QColor(255, 255, 255, 230 if getattr(self, "armed", True) else 90))   # dim = preview
             p.drawRoundedRect(QRectF(tx - 1.5, y + 1, 3, 20), 1.5, 1.5)
             p.setPen(QPen(QColor(MUTED), 1))
             p.drawLine(int(cx), y + 2, int(cx), y + 20)
@@ -210,6 +216,136 @@ class ThrusterBars(QWidget):
             p.drawText(QRectF(lw + bw + 8, y, rw, 22), Qt.AlignVCenter,
                        f"{c:+5d} {pwm if pwm is not None else '----'}")
 
+
+
+DOF_LABEL = {"surge": "FORWARD", "sway": "SIDEWAYS", "heave": "UP / DOWN", "yaw": "TURN", "roll": "ROLL",
+             "pitch": "PITCH"}
+
+
+class ControllerView(QWidget):
+    """Live picture of the controller: sticks, triggers, buttons, and what the sticks command (FORWARD, TURN...)."""
+
+    def __init__(self, axes_cfg):
+        super().__init__()
+        self.setFixedHeight(176)
+        self.connected = False
+        self.name = ""
+        self.axes = {}
+        self.held = set()
+        self.cmd = {}
+        # which DOF each stick direction drives, from config (e.g. lefty -> heave)
+        self.stick_dof = {a["axis"]: dof for dof, a in axes_cfg.items()}
+        self.dofs = [d for d in ("surge", "sway", "heave", "yaw", "roll", "pitch") if d in axes_cfg]
+
+    def set_state(self, connected, name, axes, held, cmd):
+        self.connected, self.name, self.axes, self.held, self.cmd = connected, name, axes, held, cmd
+        self.update()
+
+    def _btn(self, p, x, y, r, name, label):
+        on = name in self.held
+        p.setPen(QPen(QColor(SKY if self.connected else BORDER), 1.5))
+        p.setBrush(QColor(CYAN) if on else QColor(PANEL2))
+        p.drawEllipse(QPointF(x, y), r, r)
+        p.setPen(QColor("#04111f" if on else (TEXT if self.connected else MUTED)))
+        p.drawText(QRectF(x - r, y - r, 2 * r, 2 * r), Qt.AlignCenter, label)
+
+    def _box(self, p, rect, name, label):
+        on = name in self.held
+        p.setPen(QPen(QColor(SKY if self.connected else BORDER), 1.5))
+        p.setBrush(QColor(CYAN) if on else QColor(PANEL2))
+        p.drawRoundedRect(rect, 5, 5)
+        p.setPen(QColor("#04111f" if on else (TEXT if self.connected else MUTED)))
+        p.drawText(rect, Qt.AlignCenter, label)
+
+    def _stick(self, p, cx, cy, r, ax, ay, title):
+        p.setPen(QPen(QColor(BORDER), 1.5))
+        p.setBrush(QColor(PANEL2))
+        p.drawEllipse(QPointF(cx, cy), r, r)
+        p.setPen(QPen(QColor(59, 130, 246, 60), 1))
+        p.drawLine(QPointF(cx - r, cy), QPointF(cx + r, cy))
+        p.drawLine(QPointF(cx, cy - r), QPointF(cx, cy + r))
+        x, y = self.axes.get(ax, 0.0), self.axes.get(ay, 0.0)
+        dot = QPointF(cx + x * (r - 9), cy + y * (r - 9))
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(CYAN if self.connected else MUTED))
+        p.drawEllipse(dot, 9, 9)
+        p.setPen(QColor(MUTED))
+        p.setFont(mono(9, True))
+        v = DOF_LABEL.get(self.stick_dof.get(ay), "-")
+        h = DOF_LABEL.get(self.stick_dof.get(ax), "-")
+        p.drawText(QRectF(cx - 80, cy + r + 4, 160, 14), Qt.AlignCenter, title)
+        p.drawText(QRectF(cx - 80, cy + r + 17, 160, 14), Qt.AlignCenter, f"↕ {v}  ↔ {h}")
+
+    def paintEvent(self, _):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        r = QRectF(self.rect()).adjusted(1, 1, -1, -1)
+        p.setPen(QPen(QColor(BORDER), 1))
+        p.setBrush(QColor(PANEL))
+        p.drawRoundedRect(r, 14, 14)
+        p.setFont(mono(10, True))
+        p.setPen(QColor(GREEN if self.connected else MUTED))
+        p.drawText(QRectF(16, 8, 600, 16), Qt.AlignLeft,
+                   f"● {self.name}" if self.connected else
+                   "○ NO CONTROLLER — plug in USB, or pair over Bluetooth (PS4/PS5: hold Share + PS). Keyboard works.")
+        R = 50
+        self._stick(p, 80, 82, R, "leftx", "lefty", "LEFT STICK")
+        # shoulders / triggers
+        p.setFont(mono(9, True))
+        for i, (trig, sh, lt, ls) in enumerate((("triggerleft", "leftshoulder", "L2", "L1"),
+                                                 ("triggerright", "rightshoulder", "R2", "R1"))):
+            x0 = 160 + i * 190
+            tv = max(0.0, self.axes.get(trig, 0.0))
+            p.setPen(QPen(QColor(BORDER), 1))
+            p.setBrush(QColor(PANEL2))
+            p.drawRoundedRect(QRectF(x0, 32, 70, 12), 4, 4)
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(CYAN))
+            p.drawRoundedRect(QRectF(x0, 32, 70 * tv, 12), 4, 4)
+            p.setPen(QColor(MUTED))
+            p.drawText(QRectF(x0 + 74, 30, 24, 16), Qt.AlignVCenter, lt)
+            self._box(p, QRectF(x0, 50, 70, 18), sh, ls)
+        # d-pad
+        cx, cy, s = 200, 115, 16
+        for name, dx, dy, lab in (("dpup", 0, -1, "▲"), ("dpdown", 0, 1, "▼"), ("dpleft", -1, 0, "◀"),
+                                  ("dpright", 1, 0, "▶")):
+            self._box(p, QRectF(cx + dx * s * 1.15 - s / 2, cy + dy * s * 1.15 - s / 2, s, s), name, lab)
+        # centre buttons
+        self._box(p, QRectF(255, 95, 44, 16), "back", "SHARE")
+        self._box(p, QRectF(305, 95, 44, 16), "start", "OPTNS")
+        self._btn(p, 302, 128, 10, "guide", "PS")
+        # face buttons (PS symbols; Xbox: Y B A X)
+        fx, fy, d = 395, 115, 21
+        self._btn(p, fx, fy - d, 10, "y", "△")
+        self._btn(p, fx + d, fy, 10, "b", "○")
+        self._btn(p, fx, fy + d, 10, "a", "✕")
+        self._btn(p, fx - d, fy, 10, "x", "□")
+        self._stick(p, 510, 82, R, "rightx", "righty", "RIGHT STICK")
+        # what the ROV is being told (sticks + keyboard, after deadzone/expo)
+        x0, w = 600, self.width() - 620
+        if w > 120:
+            for i, dof in enumerate(self.dofs[:4]):
+                y = 30 + i * 34
+                v = float(self.cmd.get(dof, 0.0))
+                p.setPen(QColor(SKY))
+                p.setFont(mono(10, True))
+                p.drawText(QRectF(x0, y, 100, 18), Qt.AlignVCenter, DOF_LABEL[dof])
+                bx, bw = x0 + 100, w - 160
+                track = QRectF(bx, y + 4, bw, 10)
+                p.setPen(Qt.NoPen)
+                p.setBrush(QColor(PANEL2))
+                p.drawRoundedRect(track, 5, 5)
+                c = bx + bw / 2
+                a, b = sorted((c, c + bw / 2 * max(-1.0, min(1.0, v))))
+                g = QLinearGradient(a, 0, b, 0)
+                g.setColorAt(0, QColor(BLUE))
+                g.setColorAt(1, QColor(CYAN))
+                p.setBrush(g)
+                p.drawRoundedRect(QRectF(a, y + 4, max(b - a, 2), 10), 5, 5)
+                p.setPen(QPen(QColor(MUTED), 1))
+                p.drawLine(QPointF(c, y + 1), QPointF(c, y + 17))
+                p.setPen(QColor(TEXT))
+                p.drawText(QRectF(bx + bw + 8, y, 52, 18), Qt.AlignVCenter | Qt.AlignRight, f"{v * 100:+4.0f}%")
 
 
 class MainWindow(QMainWindow):
@@ -310,6 +446,10 @@ class MainWindow(QMainWindow):
         self._fill_links()
         self.cmb_link.activated.connect(self._link_chosen)
         head.addWidget(self.cmb_link)
+        self.lbl_pad = QLabel()
+        self.lbl_pad.setAlignment(Qt.AlignCenter)
+        self.lbl_pad.setMinimumWidth(180)
+        head.addWidget(self.lbl_pad)
         self.lbl_link = QLabel()
         self.lbl_link.setAlignment(Qt.AlignCenter)
         self.lbl_link.setMinimumWidth(190)
@@ -318,8 +458,13 @@ class MainWindow(QMainWindow):
 
         body = QHBoxLayout()
         body.setSpacing(14)
+        left = QVBoxLayout()
+        left.setSpacing(12)
         self.vpanel = VideoPanel()
-        body.addWidget(self.vpanel, 1)
+        left.addWidget(self.vpanel, 1)
+        self.cview = ControllerView(self.c["gamepad"]["axes"])
+        left.addWidget(self.cview)
+        body.addLayout(left, 1)
 
         side = QWidget()
         side.setFixedWidth(400)
@@ -372,7 +517,7 @@ class MainWindow(QMainWindow):
         self.bars = ThrusterBars(self.names)
         cv.addWidget(self.bars)
         lrow = QHBoxLayout()
-        leg = QLabel("tick = command  ·  bar = PWM from Blackpill")
+        leg = QLabel("tick = command (dim: not armed)  ·  bar = board PWM")
         leg.setObjectName("sub")
         lrow.addWidget(leg, 1)
         b = QPushButton("SETUP")
@@ -608,7 +753,8 @@ class MainWindow(QMainWindow):
             elif ev == "lights_toggle":
                 self._toggle_lights()
             elif ev.startswith("connected:"):
-                self.log(f"gamepad connected: {ev.split(':', 1)[1]}")
+                self.log(f"controller connected: {ev.split(':', 1)[1]}")
+                self.pad.rumble(0.5, 250)
             elif ev == "disconnected":
                 self.log("gamepad DISCONNECTED")
                 self.disarm("gamepad lost")
@@ -658,7 +804,7 @@ class MainWindow(QMainWindow):
             self._pill(self.lbl_state, f"Blackpill {'ARMED' if t.armed else 'disarmed'}   gain {self.gain}%",
                        RED if t.armed else GREY)
         pwm = self._from_wire(t.pwm_us) if (t and ok) else [None] * self.n
-        self.bars.set_values(cmd if armed else [0] * self.n, pwm)
+        self.bars.set_values(cmd, pwm, armed)
         vs = "no GStreamer" if not self.video.available else f"{self.video.fps:4.1f} fps"
         pad = self.pad.name or "keyboard"
         up = f"{t.uptime_ms / 1000:.0f}s" if t else "-"
@@ -672,6 +818,15 @@ class MainWindow(QMainWindow):
         tl["RX BAD"].setStyleSheet(f"color: {AMBER};" if t and t.rx_bad else "")
         self.vpanel.signal = bool(self.video.has_signal())
         self.vpanel.msg = "NO VIDEO" if self.video.available else "NO VIDEO (GStreamer missing)"
+        if self.pad.pad is not None:
+            self._pill(self.lbl_pad, "● " + (self.pad.name or "CONTROLLER")[:22].upper(), GREEN)
+        else:
+            self._pill(self.lbl_pad, "NO CONTROLLER", GREY)
+        self.cview.set_state(self.pad.pad is not None, self.pad.name or "", self.pad.axes, self.pad.held,
+                             self._last_cmd)
+        if armed != getattr(self, "_was_armed", False):
+            self.pad.rumble(0.8 if armed else 0.4, 300 if armed else 150)
+            self._was_armed = armed
         self.lbl_lights.setText(("OFF" if not self.lights_pct else f"{self.lights_pct}%")
                                 + (f"  {t.lights_us}µs" if t and ok else ""))
         img = self.vpanel.img
