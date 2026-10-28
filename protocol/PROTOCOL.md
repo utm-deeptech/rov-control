@@ -93,7 +93,7 @@ rejected frames received on the UART (wrap at 65535).
    automatically). `failsafe` stays 1 in telemetry until then so the operator sees why it disarmed.
 7. Telemetry `pwm_us` / `lights_us` report the pulse widths actually being output right now.
 8. **Lights:** boot at 1100 µs (off). `lights_us = 1100 + level * 800 / 1000`. Lights work armed or disarmed and
-   are NOT changed by failsafe (a lit ROV is easier to find).
+   are NOT changed by failsafe, so the ROV stays visible.
 9. ESC outputs: 50–400 Hz standard servo PWM; 1500 µs = stop. Hold 1500 µs for ≥ 2 s after power-up so the
    ESCs initialise (the boot state already guarantees this).
 

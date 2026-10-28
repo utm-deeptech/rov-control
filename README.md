@@ -8,50 +8,58 @@ PS3 / PS4 / PS5 / Xbox controller support.
         ▲  video (H.264/RTP)  ◄──────────────────────────────  camera
 ```
 
-* **Safety lives in the Black Pill** (C, `firmware/`): boots neutral, arms only on command, 500 ms link-loss failsafe
-  (thrusters to 1500 µs, disarm, never auto re-arm), 250 ms hardware watchdog.
-* **The Pi needs no per-network config**: it learns the laptop's address from the control packets and points the
-  video there. Tether or Wi-Fi, it just follows.
-* **The laptop** only needs to know the Pi's IP: pick **TETHER** or **WI-FI** in the app's Link menu.
+* **Safety is enforced by the Black Pill firmware** (C, `firmware/`): outputs start at neutral, thrusters run only
+  when armed, a 500 ms link-loss failsafe sets thrusters to 1500 µs and disarms (no automatic re-arm), and a 250 ms
+  hardware watchdog resets the board if its program stops.
+* **The Pi needs no network-specific configuration**: it takes the laptop's address from incoming control packets
+  and sends the video to that address, over the tether or Wi-Fi.
+* **The laptop** needs the Pi's IP address only: select **TETHER** or **WI-FI** in the app's Link menu.
 
 ## How it works
 
-**Laptop = the brain.** 50 times a second the app reads the sticks, and the mixer (`thrusters.mixing`) turns
-"forward / sideways / up / turn" into 6 numbers, one per thruster, -1000 … +1000. Power limit, `reverse` and
-`outputs` (which pin each thruster is on) are applied here. It sends them to the Pi with a heartbeat (10/s),
-the lights level (10/s) and ARM/DISARM when pressed.
+### Laptop
 
-**Pi = a messenger.** `pi/bridge.py` copies the bytes from the network to the UART wire and back, unchanged. It
-decides nothing. It also runs the camera and sends video straight to whichever laptop is talking to it.
+At 50 Hz the app reads the controller and the mixer (`thrusters.mixing`) converts the requested motion
+(forward, sideways, up/down, turn) into six thruster commands, one per thruster, in the range -1000 to +1000. The
+power limit, reverse settings and output mapping (which pin each thruster uses) are applied here. The app sends the
+commands to the Pi together with a heartbeat (10 Hz), the lights level (10 Hz) and ARM/DISARM requests.
 
-**Black Pill = the muscle.** It has no "go forward" function. It only:
+### Raspberry Pi
 
-* receives and checks messages (corrupted ones are dropped),
-* turns each number into a pulse: `1500 + value × 0.4` µs (1100 … 1900), on that output's pin, only while armed,
-* drives the lights pin (1100 µs off … 1900 µs full),
-* sends back telemetry 10 times a second: armed or not, the real PWM on every pin, counters,
-* stops everything on its own if the link goes quiet (failsafe) or its program hangs (watchdog).
+`pi/bridge.py` forwards bytes between the network (UDP) and the UART without interpreting them. The Pi also runs
+the camera and streams the video to the laptop that is sending the control packets.
+
+### Black Pill
+
+The firmware has no notion of manoeuvres such as "forward". It:
+
+* receives messages and verifies their checksums (invalid messages are discarded),
+* converts each thruster command to a pulse width, `1500 + value × 0.4` µs (limited to 1100–1900 µs), on that
+  output's pin, only while armed,
+* drives the lights output (1100 µs off to 1900 µs full),
+* returns telemetry at 10 Hz: armed state, the pulse width on every output, and message counters,
+* sets all thrusters to neutral if no valid message arrives for 500 ms (failsafe) or if its program stops (watchdog).
 
 Example, right stick fully forward at 50 % power: the laptop sends `FL=+500 FR=+500 RL=+500 RR=+500 VL=0 VR=0`, and
-the Black Pill outputs 1700 µs on the 4 horizontal thrusters and 1500 µs (stop) on the vertical ones. Forward plus
-turn is just different numbers; the board never knows what manoeuvre you're doing. So changing how the ROV moves
-means editing the laptop config, never reflashing.
+the Black Pill outputs 1700 µs on the four horizontal thrusters and 1500 µs (stop) on the two vertical thrusters.
+Combined motions produce different commands in the same format. Changes to how the ROV responds to the controls are
+made in the laptop configuration and do not require reflashing the firmware.
 
 ### Arming and disarming
 
-**Disarmed** (the default at power-on): every thruster is held at 1500 µs (stop) whatever the board receives.
-**Armed**: the board outputs the numbers it receives.
+**Disarmed** (default at power-on): every thruster is held at 1500 µs (stop) regardless of the commands received.
+**Armed**: the board outputs the commands it receives.
 
 To arm, press ARM (app button, or Options / Start):
 
-1. The app refuses if the sticks aren't centred. The first time it asks "props clear?".
-2. The app sends ARM, repeated every 0.1 s until the board replies OK. No reply in 1 s means no link.
-3. The board arms but stays at 1500 µs until the next stick command. The LED goes solid and the button turns red (DISARM).
-4. The app sends zeros until the board's telemetry says armed: arming is only real when the board confirms it.
+1. The app refuses to arm unless the sticks are centred. The first time, it asks for confirmation that the props are clear.
+2. The app sends ARM every 0.1 s until the board acknowledges it. If there is no acknowledgement within 1 s, it reports that there is no link.
+3. The board arms and keeps all outputs at 1500 µs until the next thruster command. The LED stays on and the button changes to DISARM.
+4. The app sends zero commands until the board's telemetry reports that it is armed.
 
-The board disarms (all thrusters to 1500 µs straight away) when you press SPACE, Share / Select, ○ / B or the DISARM
+The board disarms (all thrusters to 1500 µs immediately) when you press SPACE, Share / Select, ○ / B or the DISARM
 button; when the controller disconnects or the app closes; when you switch link, reset or flash; and on
-**failsafe**: nothing heard for 0.5 s. After failsafe it never re-arms by itself, so press ARM again. The lights are
+**failsafe**, when no valid message arrives for 0.5 s. After a failsafe the board does not re-arm automatically; press ARM again. The lights are
 not affected by arming or failsafe.
 
 ## 1. Laptop (Ubuntu 22.04+), once
