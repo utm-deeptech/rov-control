@@ -14,6 +14,46 @@ PS3 / PS4 / PS5 / Xbox controller support.
   video there. Tether or Wi-Fi, it just follows.
 * **The laptop** only needs to know the Pi's IP: pick **TETHER** or **WI-FI** in the app's Link menu.
 
+## How it works
+
+**Laptop = the brain.** 50 times a second the app reads the sticks, and the mixer (`thrusters.mixing`) turns
+"forward / sideways / up / turn" into 6 numbers, one per thruster, -1000 … +1000. Power limit, `reverse` and
+`outputs` (which pin each thruster is on) are applied here. It sends them to the Pi with a heartbeat (10/s),
+the lights level (10/s) and ARM/DISARM when pressed.
+
+**Pi = a messenger.** `pi/bridge.py` copies the bytes from the network to the UART wire and back, unchanged. It
+decides nothing. It also runs the camera and sends video straight to whichever laptop is talking to it.
+
+**Black Pill = the muscle.** It has no "go forward" function. It only:
+
+* receives and checks messages (corrupted ones are dropped),
+* turns each number into a pulse: `1500 + value × 0.4` µs (1100 … 1900), on that output's pin, only while armed,
+* drives the lights pin (1100 µs off … 1900 µs full),
+* sends back telemetry 10 times a second: armed or not, the real PWM on every pin, counters,
+* stops everything on its own if the link goes quiet (failsafe) or its program hangs (watchdog).
+
+Example, right stick fully forward at 50 % power: the laptop sends `FL=+500 FR=+500 RL=+500 RR=+500 VL=0 VR=0`, and
+the Black Pill outputs 1700 µs on the 4 horizontal thrusters and 1500 µs (stop) on the vertical ones. Forward plus
+turn is just different numbers; the board never knows what manoeuvre you're doing. So changing how the ROV moves
+means editing the laptop config, never reflashing.
+
+### Arming and disarming
+
+**Disarmed** (the default at power-on): every thruster is held at 1500 µs (stop) whatever the board receives.
+**Armed**: the board outputs the numbers it receives.
+
+To arm, press ARM (app button, or Options / Start):
+
+1. The app refuses if the sticks aren't centred. The first time it asks "props clear?".
+2. The app sends ARM, repeated every 0.1 s until the board replies OK. No reply in 1 s means no link.
+3. The board arms but stays at 1500 µs until the next stick command. The LED goes solid and the button turns red (DISARM).
+4. The app sends zeros until the board's telemetry says armed: arming is only real when the board confirms it.
+
+The board disarms (all thrusters to 1500 µs straight away) when you press SPACE, Share / Select, ○ / B or the DISARM
+button; when the controller disconnects or the app closes; when you switch link, reset or flash; and on
+**failsafe**: nothing heard for 0.5 s. After failsafe it never re-arms by itself, so press ARM again. The lights are
+not affected by arming or failsafe.
+
 ## 1. Laptop (Ubuntu 22.04+), once
 
 ```bash
