@@ -56,6 +56,9 @@ thrusters:
   count: 6
   test_max_percent: 30            # cap for the per-thruster bench test in the app
   names: [FL, FR, RL, RR, VL, VR]
+  # Which board output each thruster (in names order) is plugged into.
+  # Outputs 1-6 = PA6 PA7 PB0 PB1 PB6 PB7. Wire the ESCs however you like, then fix this list.
+  outputs: [1, 2, 3, 4, 5, 6]
   # Flip a thruster's sign here if it spins the wrong way (props/ESC wiring).
   reverse: [false, false, false, false, false, false]
   # Rows = thrusters (same order as names); columns = [surge, sway, heave, roll, pitch, yaw].

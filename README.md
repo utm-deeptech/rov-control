@@ -67,10 +67,13 @@ Same pinout on STM32F401CC and STM32F411CE Black Pills (one binary for both):
 | UART TX | PA9 | Pi GPIO15 / pin 10 (RXD) |
 | UART RX | PA10 | Pi GPIO14 / pin 8 (TXD) |
 | GND | G | Pi GND (pin 6) — **must** be common |
-| Thruster FL FR RL RR | PA6 PA7 PB0 PB1 | ESC signal wires |
-| Thruster VL VR | PB6 PB7 | ESC signal wires |
+| Outputs 1-6 (thrusters) | PA6 PA7 PB0 PB1 PB6 PB7 | ESC signal wires, any order |
 | Lights (all 4) | PB8 | lights signal (1100 µs off … 1900 µs full) |
 | LED | PC13 | on = armed · off = linked/disarmed · fast blink = failsafe · flash every 2 s = no link |
+
+Which thruster is on which output depends on the configuration: `thrusters.outputs` in `config/system.yaml`
+(default FL→1, FR→2, RL→3, RR→4, VL→5, VR→6). Plug the ESCs in any order and just change that list, no reflash.
+The 6 output pins themselves are fixed in the firmware (`firmware/*/board.c`), since they must be timer pins.
 
 Flash it (prebuilt binaries are in `firmware/prebuilt/`, or build with `make fw`):
 

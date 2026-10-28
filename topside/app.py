@@ -231,6 +231,9 @@ class MainWindow(QMainWindow):
         self.test_val = 0
 
         self.mixer = Mixer(th["mixing"], th.get("reverse"))
+        self.out = [int(o) - 1 for o in th.get("outputs") or range(1, self.n + 1)]
+        if sorted(self.out) != list(range(self.n)):
+            raise SystemExit(f"config: thrusters.outputs must use each output 1..{self.n} exactly once")
         if len(self.mixer.m) != self.n:
             raise SystemExit("config: thrusters.mixing must have thrusters.count rows")
         self.gains = list(c["gamepad"]["gains"])
@@ -447,6 +450,16 @@ class MainWindow(QMainWindow):
         self.logbox.appendPlainText(line)
         print(line, flush=True)
 
+    # ---------- thruster -> board output (thrusters.outputs) ----------
+    def _to_wire(self, vals):
+        w = [0] * self.n
+        for i, v in enumerate(vals):
+            w[self.out[i]] = v
+        return w
+
+    def _from_wire(self, w):
+        return [w[o] for o in self.out]
+
     # ---------- link / lights / bench test ----------
     def _ssh(self):
         return f"{self.c['pi']['user']}@{self.links[self.link_name]}"
@@ -570,9 +583,9 @@ class MainWindow(QMainWindow):
         if self.test_idx is not None:
             vals = [0] * self.n
             vals[self.test_idx] = self.test_val * 10            # percent -> -1000..1000
-            self.link.set_thrusters(vals)
+            self.link.set_thrusters(self._to_wire(vals))
         else:
-            self.link.set_thrusters(self.mixer.mix(cmd, self.gain / 100.0))
+            self.link.set_thrusters(self._to_wire(self.mixer.mix(cmd, self.gain / 100.0)))
 
     def _step_gain(self, d):
         i = self.gains.index(self.gain) if self.gain in self.gains else 0
@@ -583,6 +596,7 @@ class MainWindow(QMainWindow):
         while self.link.logq:
             self.log(self.link.logq.popleft())
         t, age, cmd = self.link.snapshot()
+        cmd = self._from_wire(cmd)
         ok = age is not None and age < self.link_ok_s
         if ok:
             self._pill(self.lbl_link, f"LINK OK  ({age * 1000:.0f} ms)", GREEN)
@@ -610,7 +624,7 @@ class MainWindow(QMainWindow):
         else:
             self._pill(self.lbl_state, f"Blackpill {'ARMED' if t.armed else 'disarmed'}   gain {self.gain}%",
                        RED if t.armed else GREY)
-        pwm = t.pwm_us if (t and ok) else [None] * self.n
+        pwm = self._from_wire(t.pwm_us) if (t and ok) else [None] * self.n
         self.bars.set_values(cmd if armed else [0] * self.n, pwm)
         vs = "no GStreamer" if not self.video.available else f"{self.video.fps:4.1f} fps"
         pad = self.pad.name or "keyboard"
