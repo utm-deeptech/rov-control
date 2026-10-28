@@ -19,12 +19,13 @@ from PySide6.QtCore import QEvent, QObject, QPointF, QRectF, Qt, QTimer  # noqa:
 from PySide6.QtGui import QColor, QFont, QBrush, QImage, QLinearGradient, QPainter, QPainterPath, QPen  # noqa: E402
 from PySide6.QtWidgets import (QApplication, QFileDialog, QHBoxLayout, QLabel, QMainWindow,  # noqa: E402
                                QMessageBox, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget,
-                               QFrame, QGridLayout, QSizePolicy, QComboBox, QSlider, QInputDialog)
+                               QFrame, QGridLayout, QSizePolicy, QComboBox, QSlider, QInputDialog, QDialog)
 
 from control import ControlLink  # noqa: E402
 from gamepad import Gamepad  # noqa: E402
 from mixer import Mixer  # noqa: E402
 import remote  # noqa: E402
+from thruster_setup import ThrusterSetup  # noqa: E402
 from video import VideoReceiver  # noqa: E402
 
 # ---- deep-tech theme (palette shared with the deeptech website) ----
@@ -68,6 +69,8 @@ QSlider::sub-page:horizontal {{ background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
     border-radius: 3px; }}
 QSlider::handle:horizontal {{ background: white; width: 16px; margin: -6px 0; border-radius: 8px; }}
 QLabel#help {{ color: {MUTED}; font-size: 10px; }}
+QCheckBox::indicator {{ width: 18px; height: 18px; border: 1px solid {SKY}; border-radius: 4px; background: {PANEL2}; }}
+QCheckBox::indicator:checked {{ background: {AMBER}; border-color: {AMBER}; }}
 """
 
 
@@ -368,9 +371,17 @@ class MainWindow(QMainWindow):
         c, cv = self._card("Thrusters")
         self.bars = ThrusterBars(self.names)
         cv.addWidget(self.bars)
+        lrow = QHBoxLayout()
         leg = QLabel("tick = command  ·  bar = PWM from Blackpill")
         leg.setObjectName("sub")
-        cv.addWidget(leg)
+        lrow.addWidget(leg, 1)
+        b = QPushButton("SETUP")
+        b.setObjectName("chip")
+        b.setCursor(Qt.PointingHandCursor)
+        b.setToolTip("Which output/pin each thruster is on, and reverse")
+        b.clicked.connect(self._thruster_setup)
+        lrow.addWidget(b)
+        cv.addLayout(lrow)
         trow = QHBoxLayout()
         tl = QLabel("BENCH TEST")
         tl.setObjectName("tilekey")
@@ -537,7 +548,28 @@ class MainWindow(QMainWindow):
         else:
             self.arm("button")
 
+    def _thruster_setup(self):
+        if self.link.board_armed():
+            QMessageBox.information(self, "Thruster setup", "Disarm first.")
+            return
+        self.setup_open = True
+        try:
+            d = ThrusterSetup(self.names, self.out, self.mixer.reverse, self)
+            if d.exec() != QDialog.Accepted:
+                return
+            out, rev = d.result_values()
+        finally:
+            self.setup_open = False
+        self.out, self.mixer.reverse = out, rev
+        cfgmod.save_local("thrusters.outputs", [o + 1 for o in out], cfgmod.ROV_PATH)
+        cfgmod.save_local("thrusters.reverse", rev, cfgmod.ROV_PATH)
+        self.log("thruster setup saved: " + "  ".join(
+            f"{n}->{o + 1}{'(rev)' if r else ''}" for n, o, r in zip(self.names, out, rev)))
+
     def arm(self, src):
+        if getattr(self, "setup_open", False):
+            self.log("ARM refused: close Thruster setup first")
+            return
         if any(abs(x) > 0.05 for x in self._last_cmd.values()):
             self.log("ARM refused: center the sticks / release keys first")
             return
@@ -582,7 +614,8 @@ class MainWindow(QMainWindow):
                 self.disarm("gamepad lost")
         if self.test_idx is not None:
             vals = [0] * self.n
-            vals[self.test_idx] = self.test_val * 10            # percent -> -1000..1000
+            v = self.test_val * 10                              # percent -> -1000..1000
+            vals[self.test_idx] = -v if self.mixer.reverse[self.test_idx] else v
             self.link.set_thrusters(self._to_wire(vals))
         else:
             self.link.set_thrusters(self._to_wire(self.mixer.mix(cmd, self.gain / 100.0)))

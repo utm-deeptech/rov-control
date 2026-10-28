@@ -95,9 +95,10 @@ static void handle(uint8_t id, uint8_t seq, const uint8_t *p, int len, uint32_t 
         break;
     case MSG_ARM:
         if (len != 1) { rx_bad++; return; }
+        if (!(armed && p[0]))               /* a repeated ARM while armed must not blip the thrusters */
+            all_center();                   /* arming: stay at 1500 until the next THRUSTERS frame */
         armed = p[0] != 0;
         failsafe = 0;
-        all_center();                       /* arming: stay at 1500 until the next THRUSTERS frame */
         { uint8_t a[2] = { MSG_ARM, seq }; send(MSG_ACK, a, 2); }
         break;
     case MSG_THRUSTERS:

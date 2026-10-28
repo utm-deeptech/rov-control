@@ -1,5 +1,7 @@
 /* Black Pill (STM32F401CC / STM32F411CE, WeAct) port. Bare metal, no HAL/CMSIS.
- * Clock: HSI 16 MHz -> PLL 84 MHz (valid on F401 and F411, no crystal dependency). APB1 42 MHz (timers 84), APB2 84.
+ * Clock: 25 MHz crystal (HSE) -> PLL 84 MHz, valid on F401 and F411. If the crystal doesn't start, falls back to the
+ *        internal 16 MHz RC (HSI) -> 84 MHz. The crystal matters: HSI drifts a few % with temperature, which is close to
+ *        the UART's tolerance at 460800 baud in cold water. APB1 42 MHz (timers 84), APB2 84.
  * Pinout: see common/board.h. Flash: ST-LINK (make flash) or USB DFU (hold BOOT0, tap NRST; make dfu).
  */
 #include <stdint.h>
@@ -79,9 +81,17 @@ void board_kick_watchdog(void) { IWDG_KR = 0xAAAA; }
 
 void board_init(void)
 {
-    /* 84 MHz from HSI */
+    /* 84 MHz: PLL input must be 1 MHz -> M = 25 (HSE) or 16 (HSI); then x336 /4 = 84, /7 = 48 */
     FLASH_ACR = (1u << 10) | (1u << 9) | (1u << 8) | 2u;                 /* D/I cache, prefetch, 2 WS */
-    RCC_PLLCFGR = (1u << 29) | (7u << 24) | (1u << 16) | (336u << 6) | 16u; /* HSI/16*336/4 = 84, Q = 48 MHz */
+    RCC_CR |= 1u << 16;                                                  /* HSE on */
+    uint32_t n = 0;
+    while (!(RCC_CR & (1u << 17)) && ++n < 500000u) { }                  /* ~100 ms max, typ. 2 ms */
+    if (RCC_CR & (1u << 17))
+        RCC_PLLCFGR = (1u << 29) | (7u << 24) | (1u << 22) | (1u << 16) | (336u << 6) | 25u;
+    else {
+        RCC_CR &= ~(1u << 16);
+        RCC_PLLCFGR = (1u << 29) | (7u << 24) | (1u << 16) | (336u << 6) | 16u;
+    }
     RCC_CFGR = 4u << 10;                                                 /* APB1 = /2 */
     RCC_CR |= 1u << 24;
     while (!(RCC_CR & (1u << 25))) { }

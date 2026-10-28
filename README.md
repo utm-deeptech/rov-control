@@ -111,8 +111,10 @@ Same pinout on STM32F401CC and STM32F411CE Black Pills (one binary for both):
 | Lights (all 4) | PB8 | lights signal (1100 µs off … 1900 µs full) |
 | LED | PC13 | on = armed · off = linked/disarmed · fast blink = failsafe · flash every 2 s = no link |
 
-Which thruster is on which output depends on the configuration: `thrusters.outputs` in `config/system.yaml`
-(default FL→1, FR→2, RL→3, RR→4, VL→5, VR→6). Plug the ESCs in any order and just change that list, no reflash.
+Which thruster is on which output depends on the configuration. Set it in the app: **Thrusters → SETUP** (output /
+pin and reverse for each thruster; picking a used output swaps the two). It applies immediately, is locked while
+armed, and is saved in `config/rov.yaml` (in git, so it travels with the repo). Default FL→1, FR→2, RL→3, RR→4,
+VL→5, VR→6. Plug the ESCs in any order, no reflash.
 The 6 output pins themselves are fixed in the firmware (`firmware/*/board.c`), since they must be timer pins.
 
 Flash it (prebuilt binaries are in `firmware/prebuilt/`, or build with `make fw`):
@@ -140,7 +142,7 @@ The protocol contract is `protocol/PROTOCOL.md`.
 * Arming asks for confirmation once, and refuses while sticks are off-centre.
 * Disarm happens automatically when the controller disconnects, the app closes, or the link drops (board failsafe).
 * **Bench test:** in the Thrusters card click a thruster (FL…VR), arm, then hold the slider (max 30 %, springs back to
-  0). Use it with props off to check each thruster's direction; flip wrong ones in `thrusters.reverse`.
+  0). Use it with props off to check each thruster's direction; flip wrong ones with the Reverse tick in Thrusters → SETUP.
 * The mixing matrix and stick layout are in `config/system.yaml` (`thrusters.mixing`, `gamepad.axes`).
 
 Controllers: PS4/PS5 pair over Bluetooth (hold Share + PS until the light flashes) or plug in USB. PS3 works over

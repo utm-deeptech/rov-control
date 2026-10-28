@@ -11,6 +11,7 @@ import yaml
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_PATH = os.path.join(HERE, "system.yaml")
+ROV_PATH = os.path.join(HERE, "rov.yaml")          # ROV wiring set from the app (thruster outputs/reverse), in git
 LOCAL_PATH = os.path.join(HERE, "local.yaml")      # per-machine overrides, not in git
 
 
@@ -27,25 +28,26 @@ def load(path=None):
     path = path or os.environ.get("ROV_CONFIG") or DEFAULT_PATH
     with open(path) as f:
         c = yaml.safe_load(f)
-    if os.path.exists(LOCAL_PATH):
-        with open(LOCAL_PATH) as f:
-            _merge(c, yaml.safe_load(f))
+    for extra in (ROV_PATH, LOCAL_PATH):
+        if os.path.exists(extra):
+            with open(extra) as f:
+                _merge(c, yaml.safe_load(f))
     return c
 
 
-def save_local(dotted, value):
-    """Set one value in config/local.yaml (e.g. save_local("network.wifi_pi_ip", "10.0.0.5"))."""
+def save_local(dotted, value, path=LOCAL_PATH):
+    """Set one value in config/local.yaml (or another override file, e.g. ROV_PATH)."""
     over = {}
-    if os.path.exists(LOCAL_PATH):
-        with open(LOCAL_PATH) as f:
+    if os.path.exists(path):
+        with open(path) as f:
             over = yaml.safe_load(f) or {}
     node = over
     parts = dotted.split(".")
     for p in parts[:-1]:
         node = node.setdefault(p, {})
     node[parts[-1]] = value
-    with open(LOCAL_PATH, "w") as f:
-        yaml.safe_dump(over, f, sort_keys=False)
+    with open(path, "w") as f:
+        yaml.safe_dump(over, f, sort_keys=False, default_flow_style=None)
 
 
 def get(cfg, dotted):

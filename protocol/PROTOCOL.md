@@ -84,8 +84,9 @@ rejected frames received on the UART (wrap at 65535).
 3. **Armed:** for each thruster `pwm = 1500 + value * 400 / 1000` (integer math, truncate toward −∞
    or toward zero — either is fine, ±1 µs), then clamp to **1100..1900 µs**.
 4. **ARM handling:** on every valid ARM frame, set `armed` to the payload, clear `failsafe`, reset the link
-   timer, and reply with `ACK(acked_msg_id=0x02, acked_seq=<seq of that ARM>)`. When arming, outputs stay at
-   1500 until the next THRUSTERS frame arrives. When disarming, outputs go to 1500 immediately.
+   timer, and reply with `ACK(acked_msg_id=0x02, acked_seq=<seq of that ARM>)`. When arming from
+   disarmed, outputs stay at 1500 until the next THRUSTERS frame arrives; a repeated ARM while already armed changes
+   nothing (still ACKed). When disarming, outputs go to 1500 immediately.
 5. **Link timer:** reset by every valid HEARTBEAT, THRUSTERS or LIGHTS frame (and ARM, see 4).
 6. **Failsafe:** if armed and no valid HEARTBEAT/THRUSTERS for **500 ms**: set all outputs to 1500 µs,
    disarm, set `failsafe = 1`. Stay disarmed until a new ARM frame arrives (the laptop never re-arms

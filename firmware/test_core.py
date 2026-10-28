@@ -156,3 +156,14 @@ def test_lights_any_state_and_survive_failsafe(lib):
     d.tick(800)
     t = rp.decode_payload([f for f in d.replies() if f.msg_id == rp.TELEMETRY][-1])
     assert t.lights_us == 1900
+
+
+def test_repeated_arm_while_armed_keeps_thrust(lib):
+    d = Dut(lib)
+    d.send(rp.arm(1, True), 0)
+    d.send(rp.thrusters(2, [500] * 6), 10)
+    d.send(rp.arm(3, True), 20)                    # resent ARM (lost ACK): no dropout
+    assert d.pwm() == [1700] * 6
+    assert [rp.decode_payload(f) for f in d.replies() if f.msg_id == rp.ACK][-1] == (rp.ARM, 3)
+    d.send(rp.arm(4, False), 30)
+    assert d.pwm() == [1500] * 6
