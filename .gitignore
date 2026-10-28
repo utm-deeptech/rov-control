@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+.pytest_cache/
+sim/logs/
+*.bin
+config/local.yaml
+firmware/build/
+sim/logs/
+!firmware/prebuilt/*.bin

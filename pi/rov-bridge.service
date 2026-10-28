@@ -1,0 +1,15 @@
+[Unit]
+Description=ROV UDP<->UART bridge + camera
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=@USER@
+SupplementaryGroups=video dialout
+ExecStart=/usr/bin/python3 @ROVDIR@/pi/bridge.py
+Restart=always
+RestartSec=1
+KillSignal=SIGINT
+
+[Install]
+WantedBy=multi-user.target

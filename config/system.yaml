@@ -1,0 +1,99 @@
+# ROV control system configuration — the ONLY place IPs, ports, baud etc. live.
+# Per-machine changes (e.g. the Pi's Wi-Fi IP) go in config/local.yaml, which overrides this file and is not in git.
+# The app's "Link" menu writes there for you.
+#
+# Hardware: Raspberry Pi 4 + camera, Black Pill (STM32F401/F411) on the Pi's UART, 6 thrusters + 1 lights PWM,
+# PS3 / PS4 / PS5 / Xbox controller on the laptop. Tether: FXTI (Ethernet over twisted pair).
+
+network:
+  laptop_ip: 192.168.2.1          # FXTI-side address of the laptop
+  laptop_cidr: 192.168.2.1/24     # used by scripts/setup_network.sh
+  pi_ip: 192.168.2.2
+  video_port: 5600                # Pi -> laptop, H.264 RTP/UDP
+  control_port: 5005              # laptop -> Pi (UDP) -> UART
+  telemetry_port: 5006            # UART -> Pi -> laptop (UDP)
+  wifi_pi_ip: 192.168.100.186     # bench without the tether: the Pi's Wi-Fi address (DHCP, may change)
+  default_link: tether            # what the app talks to at start: tether | wifi
+
+pi:
+  model: 4                        # 4 or 5
+  os: pios                        # pios (Raspberry Pi OS) | ubuntu
+  user: pi
+  ssh_alias: rovpi                # ~/.ssh/config Host alias created by scripts/setup_ssh.sh
+  install_dir: rov                # relative to the Pi user's home
+  camera: picam                   # picam | usb
+  usb_device: /dev/video0         # only used when camera: usb
+
+firmware:
+  board: blackpill                # blackpill (ROV) | bluepill (bench only)
+
+serial:
+  device: /dev/serial0            # Pi 5: use /dev/ttyAMA0 (see README)
+  baud: 460800
+
+video:
+  width: 1280
+  height: 720
+  fps: 30
+  bitrate: 3000000                # bits/s
+  intra: 15                       # keyframe interval (frames)
+  stall_timeout_s: 2.0            # laptop restarts its receiver if no frame for this long
+
+rates:
+  thrusters_hz: 50
+  heartbeat_hz: 10
+  telemetry_hz: 10                # what the Blackpill sends
+
+safety:
+  failsafe_ms: 500
+  link_ok_ms: 500                 # telemetry age below this = green link
+
+lights:
+  levels: [0, 25, 50, 75, 100]    # percent steps for the D-pad / buttons (one PWM drives all 4 lights)
+  default: 0
+
+thrusters:
+  count: 6
+  test_max_percent: 30            # cap for the per-thruster bench test in the app
+  names: [FL, FR, RL, RR, VL, VR]
+  # Flip a thruster's sign here if it spins the wrong way (props/ESC wiring).
+  reverse: [false, false, false, false, false, false]
+  # Rows = thrusters (same order as names); columns = [surge, sway, heave, roll, pitch, yaw].
+  # Starting point for a 4-vectored + 2-vertical frame: VERIFY ON THE BENCH (props off).
+  mixing:
+    - [ 1.0,  1.0,  0.0,  0.0, 0.0,  1.0]   # FL
+    - [ 1.0, -1.0,  0.0,  0.0, 0.0, -1.0]   # FR
+    - [ 1.0, -1.0,  0.0,  0.0, 0.0,  1.0]   # RL
+    - [ 1.0,  1.0,  0.0,  0.0, 0.0, -1.0]   # RR
+    - [ 0.0,  0.0,  1.0,  1.0, 0.0,  0.0]   # VL
+    - [ 0.0,  0.0,  1.0, -1.0, 0.0,  0.0]   # VR
+
+gamepad:
+  # SDL standard controller layout: the same names work for PS3, PS4, PS5 and Xbox pads.
+  #   PS: cross=a circle=b square=x triangle=y  L1=leftshoulder R1=rightshoulder  Share/Select=back  Options/Start=start
+  # Axes: leftx lefty rightx righty triggerleft triggerright. Default is the ArduSub/QGroundControl layout.
+  deadzone: 0.1
+  expo: 0.3                       # 0 = linear, 1 = very soft around centre (fine control at low stick)
+  gains: [25, 50, 75, 100]        # percent; L1 = down, R1 = up
+  default_gain: 50
+  axes:
+    heave: {axis: lefty, invert: true}     # left stick up = up
+    yaw:   {axis: leftx}                   # left stick right = turn right
+    surge: {axis: righty, invert: true}    # right stick up = forward
+    sway:  {axis: rightx}                  # right stick right = right
+  buttons:
+    arm: start                    # Options (PS4/PS5) / Start (PS3)
+    disarm: [back, b]             # Share/Select or Circle = DISARM
+    gain_up: rightshoulder
+    gain_down: leftshoulder
+    lights_up: dpup
+    lights_down: dpdown
+    lights_toggle: y              # Triangle
+
+flash:
+  address: "0x08000000"
+  remote_tmp: /tmp/rov_fw.bin
+
+sim:
+  pi_ip: 127.0.0.1                # in --sim the "Pi" (bridge) runs on the laptop
+  laptop_ip: 127.0.0.1
