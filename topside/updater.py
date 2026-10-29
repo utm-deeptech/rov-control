@@ -10,6 +10,7 @@ updates while the ROV is armed (enforced by the caller). Source installs update 
 """
 import hashlib
 import json
+import ntpath
 import os
 import re
 import shutil
@@ -145,9 +146,10 @@ def stage(zip_path, staging_dir):
 
 
 def helper_script(staged, app_dir, pid, exe=EXE):
-    """cmd script: wait for the app (pid) to exit, copy new files over, restart. config/ and the log are kept."""
+    """cmd script: wait for the app (pid) to exit, copy new files over, restart. config/ and the log are kept.
+    Always Windows paths (ntpath), whatever OS builds the text."""
     # full paths: a bare name would also skip any library folder called "config" deeper in the tree
-    xd = " ".join('"' + os.path.join(staged, d) + '" "' + os.path.join(app_dir, d) + '"' for d in KEEP_DIRS)
+    xd = " ".join('"' + ntpath.join(staged, d) + '" "' + ntpath.join(app_dir, d) + '"' for d in KEEP_DIRS)
     xf = " ".join(f'"{f}"' for f in KEEP_FILES)
     sysdir = "%SystemRoot%\\System32\\"     # full paths: Git's GNU find/ping earlier in PATH would break the waiting
     return "\r\n".join([
@@ -158,8 +160,8 @@ def helper_script(staged, app_dir, pid, exe=EXE):
         f'{sysdir}robocopy.exe "{staged}" "{app_dir}" /E /IS /IT /XD {xd} /XF {xf} /R:10 /W:1 >nul',
         f'if errorlevel 8 (echo Update failed: files were in use or not writable > "{app_dir}\\update-error.txt") '
         f'else (del "{app_dir}\\update-error.txt" 2>nul)',
-        f'start "" "{os.path.join(app_dir, exe)}"',
-        f'rd /s /q "{os.path.dirname(staged)}" 2>nul',
+        f'start "" "{ntpath.join(app_dir, exe)}"',
+        f'rd /s /q "{ntpath.dirname(staged)}" 2>nul',
         "",
     ])
 
