@@ -93,6 +93,36 @@ gamepad:
     lights_down: dpdown
     lights_toggle: a              # Cross (X)
 
+  # Which input device to use: auto = a gamepad if one is plugged in, else an RC radio;
+  # gamepad = gamepads only; rc = RC radio only (ignores gamepads); keyboard = neither.
+  input: auto
+
+  # RC transmitter (RadioMaster, Jumper, FrSky Taranis, FlySky, ...) connected by USB in "USB Joystick (HID)" mode.
+  # Windows/Linux see it as a plain joystick with numbered axes; the numbers depend on your radio's channel order.
+  # DON'T edit by hand: run `.\rov.cmd rc-setup` (Windows) / `make rc-setup` (Linux) and move the sticks when asked.
+  # Defaults = EdgeTX channel order AETR, mode 2: right stick = sway(ail) / surge(ele), left = heave(thr) / yaw(rud).
+  rc:
+    enabled: true
+    device_match: ""              # only use a joystick whose name contains this (e.g. "radiomaster"); "" = first one found
+    deadzone: 0.04
+    expo: 0.0
+    axes:                         # axis = joystick axis number; optional min/center/max = calibration from rc-setup
+      surge: {axis: 1, invert: true}
+      sway:  {axis: 0}
+      heave: {axis: 2}
+      yaw:   {axis: 3}
+    # Switches/buttons. Inputs: {button: N} | {axis: N, above: 0.5} | {axis: N, below: -0.5} | {hat: N, dir: up}
+    buttons:
+      arm_switch: {axis: 4, above: 0.5}     # ON = ARM (refused unless sticks are centred), OFF = DISARM
+      lights_toggle: {axis: 5, above: 0.5}  # flip ON to toggle the lights
+      # gain_up / gain_down / lights_up / lights_down / disarm: same syntax (a list is allowed)
+
+update:
+  # Where the app looks for new versions (GitHub Releases: owner/repo). The packaged Windows app installs them itself;
+  # source installs are told to run `rov update` / `make update`. Set check_on_start: false to never contact GitHub.
+  repo: utm-deeptech/rov-control
+  check_on_start: true
+
 flash:
   address: "0x08000000"
   remote_tmp: /tmp/rov_fw.bin

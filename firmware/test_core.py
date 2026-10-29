@@ -1,6 +1,7 @@
 """Host test: the Blue Pill protocol core (C) against the Python reference (protocol/rovproto.py)."""
 import ctypes
 import os
+import shutil
 import subprocess
 import sys
 
@@ -13,8 +14,11 @@ import rovproto as rp  # noqa: E402
 
 @pytest.fixture(scope="module")
 def lib(tmp_path_factory):
-    so = str(tmp_path_factory.mktemp("fw") / "core.so")
-    subprocess.check_call(["gcc", "-shared", "-fPIC", "-O1", "-Wall", "-Werror",
+    if shutil.which("gcc") is None:
+        pytest.skip("gcc not installed (Windows: install MSYS2/MinGW or run these in WSL)")
+    win = os.name == "nt"
+    so = str(tmp_path_factory.mktemp("fw") / ("core.dll" if win else "core.so"))
+    subprocess.check_call(["gcc", "-shared"] + ([] if win else ["-fPIC"]) + ["-O1", "-Wall", "-Werror",
                            os.path.join(HERE, "common", "core.c"), "-o", so])
     l = ctypes.CDLL(so)
     l.core_pwm.restype = ctypes.c_uint16

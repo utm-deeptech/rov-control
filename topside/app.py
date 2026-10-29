@@ -21,7 +21,7 @@ for sub in ("protocol", "config", "topside"):
     sys.path.insert(0, os.path.join(ROOT, sub))
 
 import cfg as cfgmod  # noqa: E402
-from PySide6.QtCore import QEvent, QObject, QPointF, QRectF, Qt, QTimer  # noqa: E402
+from PySide6.QtCore import QEvent, QObject, QPointF, QRectF, QThread, Qt, QTimer, Signal  # noqa: E402
 from PySide6.QtGui import QColor, QFont, QBrush, QImage, QLinearGradient, QPainter, QPainterPath, QPen  # noqa: E402
 from PySide6.QtWidgets import (QApplication, QFileDialog, QHBoxLayout, QLabel, QMainWindow,  # noqa: E402
                                QMessageBox, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget,
@@ -31,6 +31,8 @@ from control import ControlLink  # noqa: E402
 from gamepad import Gamepad  # noqa: E402
 from mixer import Mixer  # noqa: E402
 import remote  # noqa: E402
+import updater  # noqa: E402
+from version import __version__  # noqa: E402
 from thruster_setup import ThrusterSetup  # noqa: E402
 from video import VideoReceiver  # noqa: E402
 
@@ -348,6 +350,29 @@ class ControllerView(QWidget):
                 p.drawText(QRectF(bx + bw + 8, y, 52, 18), Qt.AlignVCenter | Qt.AlignRight, f"{v * 100:+4.0f}%")
 
 
+class UpdateWorker(QThread):
+    """Network work for updates, off the GUI thread: mode 'check' asks GitHub, mode 'download' fetches + verifies + unpacks."""
+    checked = Signal(object)          # Update or None
+    staged = Signal(str)              # folder with the new version, verified
+    failed = Signal(str)
+    progress = Signal(int, int)
+
+    def __init__(self, mode, repo, update=None, parent=None):
+        super().__init__(parent)
+        self.mode, self.repo, self.update = mode, repo, update
+
+    def run(self):
+        try:
+            if self.mode == "check":
+                self.checked.emit(updater.check(self.repo, __version__))
+            else:
+                self.staged.emit(updater.download_and_stage(self.update, lambda d, t: self.progress.emit(d, t)))
+        except updater.UpdateError as e:
+            self.failed.emit(str(e))
+        except Exception as e:  # never let a network problem kill the app
+            self.failed.emit(f"update error: {e}")
+
+
 class MainWindow(QMainWindow):
     def __init__(self, c, sim):
         super().__init__()
@@ -406,6 +431,12 @@ class MainWindow(QMainWindow):
         if self.pad.error:
             self.log(self.pad.error)
         self.log("Keys: W/S surge, A/D sway, R/F heave, Q/E yaw, [ ] gain, SPACE = DISARM")
+        self.log(f"ROV Control v{__version__}")
+        self._update = None
+        self._uw = None
+        self._upd_cfg = c.get("update") or {}
+        if not sim and self._upd_cfg.get("check_on_start", True) and self._upd_cfg.get("repo"):
+            QTimer.singleShot(3000, lambda: self._check_update(manual=False))      # quiet unless there is news
 
     # ---------- UI ----------
     @staticmethod
@@ -577,15 +608,18 @@ class MainWindow(QMainWindow):
         self.btn_reset = QPushButton("Reset Blackpill")
         self.btn_flash = QPushButton("Flash firmware…")
         self.btn_cam = QPushButton("Restart camera")
-        for b in (self.btn_reset, self.btn_flash, self.btn_cam):
+        self.btn_update = QPushButton(f"Check for updates  (v{__version__})")
+        for b in (self.btn_reset, self.btn_flash, self.btn_cam, self.btn_update):
             b.setObjectName("action")
             b.setCursor(Qt.PointingHandCursor)
         self.btn_reset.clicked.connect(self._reset)
         self.btn_flash.clicked.connect(self._flash)
         self.btn_cam.clicked.connect(self._restart_cam)
+        self.btn_update.clicked.connect(self._update_clicked)
         g.addWidget(self.btn_reset, 0, 0)
         g.addWidget(self.btn_flash, 0, 1)
         g.addWidget(self.btn_cam, 1, 0, 1, 2)
+        g.addWidget(self.btn_update, 2, 0, 1, 2)
         v.addLayout(g)
 
         self.logbox = QPlainTextEdit()
@@ -874,6 +908,83 @@ class MainWindow(QMainWindow):
         self._start_job(remote.sim_job("Restart camera", self) if self.sim else
                         remote.restart_camera_job(self._ssh(), self))
 
+    # ---------- updates ----------
+    def _check_update(self, manual):
+        repo = self._upd_cfg.get("repo")
+        if not repo:
+            self.log("updates: no repository configured (update.repo in config/system.yaml)")
+            return
+        if self._uw and self._uw.isRunning():
+            return
+        if manual:
+            self.log("checking for updates...")
+        self._uw = UpdateWorker("check", repo, parent=self)
+        self._uw.checked.connect(lambda u: self._on_checked(u, manual))
+        self._uw.failed.connect(lambda m: self.log(f"updates: {m}") if manual else None)
+        self._uw.start()
+
+    def _on_checked(self, u, manual):
+        self._update = u
+        if u is None:
+            if manual:
+                self.log(f"up to date (v{__version__})")
+            return
+        self.log(f"UPDATE AVAILABLE: v{u.version} (you have v{__version__}). Click the update button.")
+        self.btn_update.setText(f"Update to v{u.version}")
+        if manual:
+            self._update_clicked()
+
+    def _update_clicked(self):
+        if self._update is None:
+            self._check_update(manual=True)
+            return
+        u = self._update
+        if self.link.board_armed():
+            QMessageBox.warning(self, "Update", "Disarm first: the app restarts during an update.")
+            return
+        if not updater.is_packaged():
+            QMessageBox.information(self, f"Update to v{u.version}",
+                                    f"v{u.version} is available.\n\n\nThis copy runs from source. Update it with:\n"
+                                    "   Windows:  .\\rov.cmd update\n   Linux:    make update\n\n" + (u.notes or "")[:600])
+            return
+        r = QMessageBox.question(self, f"Update to v{u.version}",
+                                 f"Download and install v{u.version}? The app will restart. Your settings are kept."
+                                 f"\n\n{(u.notes or '')[:600]}", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if r != QMessageBox.Yes:
+            return
+        self.btn_update.setEnabled(False)
+        self.log(f"downloading v{u.version}...")
+        self._uw = UpdateWorker("download", self._upd_cfg["repo"], u, parent=self)
+        self._last_pct = -1
+        self._uw.progress.connect(self._on_update_progress)
+        self._uw.staged.connect(self._on_update_staged)
+        self._uw.failed.connect(self._on_update_failed)
+        self._uw.start()
+
+    def _on_update_progress(self, done, total):
+        pct = int(done * 100 / total) if total else 0
+        if pct // 20 != self._last_pct // 20:
+            self._last_pct = pct
+            self.log(f"downloading... {pct}%")
+
+    def _on_update_failed(self, msg):
+        self.btn_update.setEnabled(True)
+        self.log(f"UPDATE FAILED: {msg}  (nothing was changed)")
+        QMessageBox.warning(self, "Update failed", msg + "\n\nNothing was changed. You can keep using this version.")
+
+    def _on_update_staged(self, folder):
+        if self.link.board_armed():
+            self.btn_update.setEnabled(True)
+            self.log("update downloaded but NOT installed: the ROV is armed. Disarm and click update again.")
+            return
+        try:
+            updater.apply_windows(folder, updater.app_dir())
+        except updater.UpdateError as e:
+            self._on_update_failed(str(e))
+            return
+        self.log("verified OK. Restarting to install the update...")
+        self.close()
+
     # ---------- keys / close ----------
     def handle_key(self, ev, down):
         if ev.isAutoRepeat():
@@ -929,11 +1040,31 @@ class KeyFilter(QObject):
         return False
 
 
+def _fix_stdio():
+    """A windowed (no console) packaged app has no stdout/stderr: log to a file next to the .exe instead."""
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    try:
+        f = open(os.path.join(os.path.dirname(sys.executable), "rov-control.log"), "a", encoding="utf-8")
+    except OSError:
+        f = open(os.devnull, "w")
+    if sys.stdout is None:
+        sys.stdout = f
+    if sys.stderr is None:
+        sys.stderr = f
+
+
 def main():
+    _fix_stdio()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--sim", action="store_true", help="talk to sim/run_sim.sh on 127.0.0.1")
     ap.add_argument("--config", help="alternate system.yaml")
+    ap.add_argument("--rc-setup", action="store_true", help="calibrate an RC radio (RadioMaster, ...) and exit")
     a = ap.parse_args()
+    if a.rc_setup:
+        import rcsetup
+        rcsetup.main()
+        return
     c = cfgmod.load(a.config)
     app = QApplication(sys.argv)
     app.setApplicationName("ROV Control")

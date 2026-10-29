@@ -10,9 +10,16 @@ import sys
 import yaml
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_PATH = os.path.join(HERE, "system.yaml")
-ROV_PATH = os.path.join(HERE, "rov.yaml")          # ROV wiring set from the app (thruster outputs/reverse), in git
-LOCAL_PATH = os.path.join(HERE, "local.yaml")      # per-machine overrides, not in git
+if getattr(sys, "frozen", False):
+    # Packaged app (PyInstaller): defaults are read-only inside the bundle; settings the app saves
+    # (Wi-Fi IP, thruster wiring) go in a config/ folder next to the .exe so they survive updates.
+    DEFAULT_PATH = os.path.join(getattr(sys, "_MEIPASS", HERE), "config", "system.yaml")
+    USER_DIR = os.path.join(os.path.dirname(sys.executable), "config")
+else:
+    DEFAULT_PATH = os.path.join(HERE, "system.yaml")
+    USER_DIR = HERE
+ROV_PATH = os.path.join(USER_DIR, "rov.yaml")      # ROV wiring set from the app (thruster outputs/reverse), in git
+LOCAL_PATH = os.path.join(USER_DIR, "local.yaml")  # per-machine overrides, not in git
 
 
 def _merge(base, over):
@@ -26,11 +33,11 @@ def _merge(base, over):
 
 def load(path=None):
     path = path or os.environ.get("ROV_CONFIG") or DEFAULT_PATH
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         c = yaml.safe_load(f)
     for extra in (ROV_PATH, LOCAL_PATH):
         if os.path.exists(extra):
-            with open(extra) as f:
+            with open(extra, encoding="utf-8") as f:
                 _merge(c, yaml.safe_load(f))
     return c
 
@@ -39,14 +46,15 @@ def save_local(dotted, value, path=LOCAL_PATH):
     """Set one value in config/local.yaml (or another override file, e.g. ROV_PATH)."""
     over = {}
     if os.path.exists(path):
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             over = yaml.safe_load(f) or {}
     node = over
     parts = dotted.split(".")
     for p in parts[:-1]:
         node = node.setdefault(p, {})
     node[parts[-1]] = value
-    with open(path, "w") as f:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
         yaml.safe_dump(over, f, sort_keys=False, default_flow_style=None)
 
 
