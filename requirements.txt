@@ -1,4 +1,5 @@
-# Laptop app. Installed into .venv by `make setup` (GStreamer's python bindings come from apt: python3-gi).
+# Laptop app. Installed into .venv by `make setup` (Linux; GStreamer's python bindings come from apt: python3-gi)
+# or by `rov setup` (Windows; video decodes with PyAV, no system packages needed).
 # PySide6 6.12.0 aborts on Python 3.10 (None refcount bug) — keep 6.8.3.
 PySide6==6.8.3
 shiboken6==6.8.3
@@ -6,3 +7,5 @@ pygame==2.6.1
 pyserial==3.5
 PyYAML==6.0.2
 pytest==8.3.3
+# H.264 video decoder for platforms without GStreamer's python bindings (Windows). Linux uses GStreamer.
+av==15.1.0; sys_platform == "win32"

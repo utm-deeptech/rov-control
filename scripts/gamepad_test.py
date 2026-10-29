@@ -22,7 +22,13 @@ try:
         cmd, events = pad.poll()
         for e in events:
             print("\nEVENT", e)
-        if pad.pad:
+        if pad.pad and pad.kind == "rc":          # RC radio: raw numbered axes/buttons (these are the numbers config uses)
+            j = pad.pad
+            ax = " ".join(f"{i}={j.get_axis(i):+.2f}" for i in range(j.get_numaxes()))
+            bt = [i for i in range(j.get_numbuttons()) if j.get_button(i)]
+            dofs = " ".join(f"{k}={v:+.2f}" for k, v in cmd.items() if k in ("surge", "sway", "heave", "yaw"))
+            print(f"\r{j.get_name()[:22]} axes: {ax} | buttons: {','.join(map(str, bt)) or '-':<8} | {dofs}   ", end="", flush=True)
+        elif pad.pad:
             axes = " ".join(f"{n}={pad._axis_val(n):+.2f}" for n in gp.AXES)
             held = [n for n in gp.BUTTONS if pad.pad.get_button(pad._btn[n])]
             dofs = " ".join(f"{k}={v:+.2f}" for k, v in cmd.items() if k in ("surge", "sway", "heave", "yaw"))

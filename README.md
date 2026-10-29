@@ -1,7 +1,8 @@
 # ROV Control
 
-Laptop app + Raspberry Pi bridge + Black Pill firmware for a 6-thruster ROV with one lights channel, live video and
-PS3 / PS4 / PS5 / Xbox controller support.
+Laptop app (**Ubuntu 22.04+**, primary; Windows 10/11 also supported, see [docs/WINDOWS.md](docs/WINDOWS.md)) +
+Raspberry Pi bridge + Black Pill firmware for a 6-thruster ROV with one lights channel, live video and
+PS3 / PS4 / PS5 / Xbox controller or RC radio (RadioMaster, ...) support.
 
 ```
  Laptop (app, controller)  ──FXTI tether (Ethernet) or Wi-Fi──  Raspberry Pi 4  ──UART──  Black Pill  ──PWM──  6 ESCs + lights
@@ -62,7 +63,9 @@ button; when the controller disconnects or the app closes; when you switch link,
 **failsafe**, when no valid message arrives for 0.5 s. After a failsafe the board does not re-arm automatically; press ARM again. The lights are
 not affected by arming or failsafe.
 
-## 1. Laptop (Ubuntu 22.04+), once
+## 1. Laptop, once
+
+### Ubuntu 22.04+ (primary)
 
 ```bash
 git clone https://github.com/utm-deeptech/rov-control.git ~/rov-control
@@ -73,6 +76,14 @@ make run-sim      # whole system on the laptop, no hardware
 make run          # the real thing
 make desktop      # adds "ROV Control" to the applications menu
 ```
+
+Or all of that in one go: `bash install.sh`. Update later with `make update`.
+
+### Windows 10/11
+
+Same app, no WSL. Everything Windows-specific (packaged `.exe`, one-click `Install.bat`, tether firewall rule, PS3 driver,
+differences from Ubuntu) is in **[docs/WINDOWS.md](docs/WINDOWS.md)**. Short version, in PowerShell in the repo folder:
+`.\rov.cmd setup`, then `.\rov.cmd run-sim` (practice) or `.\rov.cmd run`.
 
 ## 2. Raspberry Pi (on the ROV), once
 
@@ -99,7 +110,7 @@ What it sets up:
 | Side | Address | How |
 |---|---|---|
 | Pi `eth0` | `192.168.2.2/24` | done by `pi/install.sh` |
-| Laptop FXTI USB-Ethernet | `192.168.2.1/24` | `make network` (pick the `enx...` interface, once) |
+| Laptop FXTI USB-Ethernet | `192.168.2.1/24` | Ubuntu: `make network` (pick the `enx...` interface, once). Windows: `\rov.cmd network` as Administrator (also opens the firewall for video) |
 
 Then in the app choose **Link → TETHER · 192.168.2.2**. Your laptop's Wi-Fi internet keeps working. To use other
 addresses change `network:` in `config/system.yaml` (and re-run `pi/install.sh` on the Pi).
@@ -152,7 +163,7 @@ The protocol contract is `protocol/PROTOCOL.md`.
 * Disarm happens automatically when the controller disconnects, the app closes, or the link drops (board failsafe).
 * **Bench test:** in the Thrusters card click a thruster (FL…VR), arm, then hold the slider (max 30 %, springs back to
   0). Use it with props off to check each thruster's direction; flip wrong ones with the Reverse tick in Thrusters → SETUP.
-* The mixing matrix and stick layout are in `config/system.yaml` (`thrusters.mixing`, `gamepad.axes`).
+* The mixing matrix and stick layout are in `config/system.yaml` (`thrusters.mixing`, `gamepad.axes`). Using a drone radio? See 5b.
 
 **Is the controller connected?** The header shows a green **● PS4 CONTROLLER** chip (grey **NO CONTROLLER** when
 not), and the pad rumbles when it connects, arms and disarms. The panel under the video shows both sticks, triggers
@@ -161,6 +172,56 @@ the thruster bars show a dim preview of what each thruster would do. Unplugging 
 
 Controllers: PS4/PS5 pair over Bluetooth (hold Share + PS until the light flashes) or plug in USB. PS3 works over
 USB (Bluetooth needs `sixpair`). Check what the app sees with `make gamepad-test`.
+
+## 5b. RC radio (RadioMaster, Jumper, Taranis, FlySky ...) instead of a gamepad
+
+Any drone transmitter that shows up on the PC as a **USB joystick** works. The PS3/PS4/PS5/Xbox pads keep working
+exactly as before: with `gamepad.input: auto` (default) a gamepad is used if one is plugged in, otherwise the radio.
+
+1. Radio: plug in the USB cable and choose **USB Joystick (HID)** (EdgeTX: it asks on plugging in). Use a data cable.
+2. Run the wizard: `.\rov.cmd rc-setup` (Windows) / `make rc-setup` (Linux) / `"ROV Control.exe" --rc-setup`.
+   It asks you to move every stick through its full range, centre them, then push each stick in the direction it
+   names (forward, right, up, turn right) and flip your ARM and LIGHTS switches. From that it works out the axis
+   numbers, which way is positive and each stick's min/centre/max, and saves them in `config/local.yaml`
+   (`gamepad.rc`). Nothing depends on the radio model. Re-run it any time (new radio, re-calibrated sticks).
+3. Check live with `.\rov.cmd gamepad-test` (raw axis numbers) or just start the app: the header shows the radio's name.
+
+Defaults without the wizard (EdgeTX AETR, mode 2): right stick = surge/sway, left stick = heave/yaw, switch on
+channel 5 = ARM, channel 6 = lights. Switch inputs can be buttons, axes (`{axis: 4, above: 0.5}`) or hats; see
+`config/system.yaml`. Gain and lights up/down can be given any switch the same way.
+
+Safety, specific to radios:
+* **ARM switch ON = arm, OFF = disarm.** A switch that is already ON when the radio is plugged in does nothing;
+  flip it OFF then ON. After a failsafe the board stays disarmed until you flip it OFF and ON again.
+* ARM is refused unless the sticks are centred: **the throttle stick (heave) must be in the MIDDLE**, as it doesn't spring back.
+* Unplugging the USB cable disarms (same as a gamepad), and so does the radio dropping off USB. The app only sees the
+  USB connection, not the radio's own RF link. Check on your radio what happens to USB when you switch it off.
+* Not supported: SBUS / CRSF / PPM receivers wired to the Pi. This uses the radio's USB port on the laptop.
+
+## 5c. Updating
+
+| You have | Update |
+|---|---|
+| **Ubuntu** | `make update` |
+| **Packaged app** (`ROV Control.exe`) | Click **Update to vX.Y.Z** in the app (it checks quietly 3 s after start; or click *Check for updates*). It downloads, verifies the SHA-256, closes and restarts on the new version. Your settings (`config\`: Wi-Fi IP, thruster wiring, RC calibration) are kept. Refused while the ROV is armed. |
+| **Windows, from source** | `.\rov.cmd update` (git pull + packages) |
+| **Raspberry Pi** | `make deploy-pi` from the laptop (or `git pull && bash pi/install.sh --no-apt` on the Pi) |
+| **Black Pill firmware** | the app's **Flash firmware...** button with `firmware/prebuilt/blackpill.bin` |
+
+The app only contacts GitHub (api.github.com, read-only) to ask for the newest release; set `update.check_on_start: false`
+in `config/system.yaml` to stop it. If the protocol changes, update the laptop, Pi and firmware together.
+The packaged app's update is unsigned: if Windows SmartScreen warns after an update, choose *More info > Run anyway*.
+
+**Private repository caveat:** the in-app update check asks GitHub without a login, and GitHub answers "not found" for a private repo, so the app will say *no release published yet*. For in-app updates to work, make the repo public, or publish the releases in a public repo and point `update.repo` (in `config/system.yaml`) at it. Until then, teammates update by downloading the new zip from the Releases page (needs access to the repo) or with `make update` / `\rov.cmd update`.
+
+### Releasing (maintainers)
+
+1. Bump `topside/version.py` (e.g. `1.1.0`), commit, push.
+2. `git tag v1.1.0 && git push --tags`.
+3. CI tests on Ubuntu + Windows, builds `ROV-Control-windows.zip`, and publishes a GitHub Release with the zip and its
+   `.sha256` (the tag must match `version.py`). Members' apps then offer the update. A release without the `.sha256`
+   is refused by the updater on purpose.
+4. Set `update.repo` in `config/system.yaml` to the real `owner/repo` (the app reads releases from there).
 
 ## 6. Bench mode without UART wires (ST-LINK only)
 
@@ -202,7 +263,8 @@ firmware/    common/ (protocol core + main loop), blackpill/, bluepill/, prebuil
 pi/          bridge.py (UART), swd_bridge.py + bench_start/stop.sh (ST-LINK bench), camera.sh, camera_supervisor.py, install.sh, setup_eth.sh
 protocol/    PROTOCOL.md, rovproto.py (reference implementation)
 topside/     the app (PySide6), control link, controller, video
-sim/         fake board + end-to-end tests; make run-sim
+sim/         fake board + end-to-end tests; make run-sim (Linux) / .\rov.cmd run-sim (Windows)
+scripts/windows/  rov.ps1 behind rov.cmd (setup, test, run, network, ...)
 ```
 
 ## Troubleshooting
@@ -229,6 +291,12 @@ Verified:
 * Earlier: the same chain over Wi-Fi with a **Blue Pill**.
 * 37 automated tests: protocol, firmware core (compiled for the laptop and checked against `rovproto.py`), mixer,
   controller config, end-to-end sim (arming, PWM mapping, lights, failsafe, no auto re-arm).
+
+Added after that (2026-10-30), checked on a Windows 11 PC in the simulator only, never on the ROV and not yet on Ubuntu:
+* Windows support ([docs/WINDOWS.md](docs/WINDOWS.md)): PyAV video, socket simulator, packaged `.exe`, `\rov.cmd`.
+* RC radio input (section 5b): tested with a fake radio in unit tests, **not with a real RadioMaster**.
+* Updates (section 5c): tested with fake releases; the real GitHub flow needs a published release, and the repo is private (see 5c).
+* 49 automated tests now (a further 17 skip on Windows: Linux pty path, C firmware needing gcc). CI runs them on Ubuntu 22.04 and Windows.
 
 Not yet verified on hardware (do these first on the real ROV, props off):
 1. Wire the Black Pill UART (table above) and run `pi/bridge.py` / the `rov-bridge` service instead of the ST-LINK

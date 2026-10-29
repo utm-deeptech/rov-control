@@ -5,7 +5,7 @@ export PYTEST_DISABLE_PLUGIN_AUTOLOAD := 1
 
 PY := $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 
-.PHONY: fw fw-flash fw-dfu pi-swd pi-fake setup run run-sim test deploy-pi deploy-pi-full flash reset gamepad-test network ssh desktop
+.PHONY: fw fw-flash fw-dfu pi-swd pi-fake setup run run-sim test deploy-pi deploy-pi-full flash reset gamepad-test rc-setup update network ssh desktop
 
 setup:            ## laptop packages + venv (Phase 1)
 	bash scripts/setup_laptop.sh
@@ -48,6 +48,14 @@ reset:
 
 gamepad-test:     ## show raw axis/button numbers
 	$(PY) scripts/gamepad_test.py
+
+update:           ## get the latest version (source installs): git pull + packages
+	git pull --ff-only
+	$(PY) -m pip install -r requirements.txt
+	@$(PY) -c "import sys; sys.path.insert(0, 'topside'); import version; print('Updated to v' + version.__version__)"
+
+rc-setup:         ## calibrate an RC radio (RadioMaster, ...) connected by USB
+	$(PY) topside/app.py --rc-setup
 
 desktop:          ## install the app launcher in your applications menu
 	mkdir -p ~/.local/share/applications

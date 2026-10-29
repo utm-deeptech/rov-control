@@ -7,3 +7,7 @@ config/local.yaml
 firmware/build/
 sim/logs/
 !firmware/prebuilt/*.bin
+dist/
+build/
+*.spec
+rov-control.log

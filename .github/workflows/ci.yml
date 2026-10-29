@@ -1,0 +1,66 @@
+name: ci
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Qt libraries (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3
+      - run: python -m pip install -r requirements.txt
+      - run: python -m pytest -q protocol topside sim firmware
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+
+  build-windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m venv .venv
+      - run: .\rov.cmd build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ROV-Control-windows
+          path: dist/ROV-Control-windows.zip
+
+  # Publishing: bump topside/version.py, commit, then `git tag v1.2.0 && git push --tags`.
+  # This job attaches the zip AND its SHA-256 to a GitHub Release: the in-app updater refuses a release without both.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build-windows
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ROV-Control-windows
+      - name: Tag must match topside/version.py
+        run: |
+          want="${GITHUB_REF_NAME#v}"
+          have=$(python3 -c "import sys; sys.path.insert(0, 'topside'); import version; print(version.__version__)")
+          [ "$want" = "$have" ] || { echo "tag v$want but version.py says $have"; exit 1; }
+      - name: Checksum
+        run: sha256sum ROV-Control-windows.zip > ROV-Control-windows.zip.sha256
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" ROV-Control-windows.zip ROV-Control-windows.zip.sha256 --title "$GITHUB_REF_NAME" --generate-notes
