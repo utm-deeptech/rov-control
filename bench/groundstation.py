@@ -69,6 +69,7 @@ class Station:
         self.pad_name = None
         self.pad_axes, self.pad_held = {}, []
         self.pad_error = None
+        self.pad_failed = False
         self.say("ground station up, vehicle at %s:%d" % self.dest)
 
     # ---------- helpers ----------
@@ -177,7 +178,25 @@ class Station:
         cmd, events = {d: 0.0 for d in rp.DOFS}, []
         if self.pad is not None:
             self.pad.keys = keys
-            cmd, events = self.pad.poll()
+            try:
+                cmd, events = self.pad.poll()
+            except Exception as e:                          # SDL hiccup: never let it kill the link thread
+                cmd, events = {d: 0.0 for d in rp.DOFS}, []
+                if not self.pad_failed:
+                    self.say(f"controller read failed ({e}): sticks neutral, recovering")
+                    if self.armed():
+                        self.request_arm(False)             # no trustworthy pilot input -> disarm
+                self.pad_failed = True
+                try:
+                    import pygame
+                    pygame.display.init()
+                    pygame.joystick.init()
+                except Exception:
+                    pass
+            else:
+                if self.pad_failed:
+                    self.say("controller reading again")
+                self.pad_failed = False
             self.pad_name = self.pad.name
             self.pad_axes = {k: round(v, 3) for k, v in self.pad.axes.items()}
             self.pad_held = sorted(self.pad.held)
@@ -228,6 +247,15 @@ class Station:
         t_pilot = t_hb = t_missing = now
         self.fetch_params()
         while True:
+            try:
+                t_pilot, t_hb, t_missing = self.step(t_pilot, t_hb, t_missing)
+            except Exception as e:                          # log and keep the link alive, whatever happens
+                self.say(f"ground station error: {e!r}")
+                time.sleep(0.05)
+
+    def step(self, t_pilot, t_hb, t_missing):
+        """One pass of the link loop: pilot + heartbeat out, ARM retries, param fetch, frames in."""
+        if True:
             now = time.monotonic()
             if now >= t_pilot:
                 self.poll_input(1.0 / PILOT_HZ)
@@ -270,10 +298,8 @@ class Station:
                 self.cnt_prev, self.t_rate = collections.Counter(self.cnt), now
             try:
                 data = self.sock.recv(4096)
-            except (socket.timeout, BlockingIOError):
-                continue
-            except OSError:
-                continue
+            except OSError:                             # timeout (nothing yet) or a network blip
+                return t_pilot, t_hb, t_missing
             for fr in self.parser.feed(data):
                 self.cnt["rx"] += 1
                 self.cnt["rx_" + rp.NAMES.get(fr.msg_id, "?")] += 1
@@ -282,6 +308,7 @@ class Station:
                 except ValueError:
                     continue
                 self.on_frame(fr.msg_id, v)
+            return t_pilot, t_hb, t_missing
 
     def on_frame(self, mid, v):
         now = time.monotonic()
