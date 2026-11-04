@@ -310,6 +310,22 @@ class Station:
                 self.on_frame(fr.msg_id, v)
             return t_pilot, t_hb, t_missing
 
+    def set_dest(self, vehicle):
+        """Switch link (FXTI tether / Wi-Fi / bench) on the fly. Disarms first; the bridge learns our address
+        from the next packet. Parameters are read again from whatever board is on the new link."""
+        if vehicle == self.dest[0]:
+            return
+        if self.armed():
+            self.request_arm(False)
+            self.send(rp.arm(self.next(), False))
+        self.dest = (vehicle, self.dest[1])
+        with self.lock:
+            self.telem = self.status = None
+            self.t_telem = self.t_status = None
+            self.params = {}
+        self.say(f"link -> {vehicle}:{self.dest[1]}")
+        self.fetch_params()
+
     def on_frame(self, mid, v):
         now = time.monotonic()
         if mid == rp.TELEMETRY:
