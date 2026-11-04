@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=ROV Bench
+Comment=Testing: Black Pill v3 over the LAN (Jetson/Pi bridge), no FXTI, no camera
+Exec=env -u PYTHONPATH PYTHONNOUSERSITE=1 /home/anas-alanqar/rov-work/rov-control/.venv/bin/python /home/anas-alanqar/rov-work/rov-control/bench/station_app.py --bench
+Path=/home/anas-alanqar/rov-work/rov-control
+Icon=applications-science
+Terminal=false
+Categories=Development;Engineering;
+StartupWMClass=rov-bench

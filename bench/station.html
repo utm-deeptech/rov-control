@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ROV Control</title>
+<style>
+:root {
+  --bg: #0f1216; --panel: #171b21; --panel2: #1d222a; --line: #2a313b; --text: #e6e9ee; --dim: #8b95a3;
+  --accent: #4fa3ff; --ok: #3ccf7a; --warn: #f0b429; --bad: #ff5c5c; --pos: #4fa3ff; --neg: #ff8a4c;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+:root[data-theme="light"] {
+  --bg: #f3f5f8; --panel: #ffffff; --panel2: #f0f3f7; --line: #d9dee5; --text: #1b2028; --dim: #5d6775;
+  --accent: #1f6fd1; --ok: #16944c; --warn: #b07a00; --bad: #d23434; --pos: #1f6fd1; --neg: #d0601a;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+h1 { font-size: 17px; margin: 0 12px 0 0; font-weight: 650; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 0 0 10px; font-weight: 600; }
+h3 { font-size: 13px; margin: 0 0 6px; font-weight: 600; }
+main { padding: 12px 16px 40px; display: grid; gap: 12px; grid-template-columns: repeat(12, 1fr); max-width: 1500px; margin: 0 auto; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
+.c3 { grid-column: span 3; } .c4 { grid-column: span 4; } .c5 { grid-column: span 5; } .c6 { grid-column: span 6; }
+.c8 { grid-column: span 8; } .c12 { grid-column: span 12; }
+@media (max-width: 1100px) { .c3, .c4, .c5, .c6, .c8 { grid-column: span 12; } }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.dim { color: var(--dim); }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sp { flex: 1; }
+button { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; padding: 6px 11px; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.big { font-size: 18px; font-weight: 700; padding: 12px; width: 100%; letter-spacing: .04em; }
+button.arm { background: #1d3b2a; border-color: var(--ok); }
+button.disarm { background: #4a1f1f; border-color: var(--bad); }
+:root[data-theme="light"] button.arm { background: #d9f5e4; } :root[data-theme="light"] button.disarm { background: #fde0e0; }
+.chip { display: inline-block; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); font-size: 12px; color: var(--dim); }
+.chip.ok { color: var(--ok); border-color: var(--ok); } .chip.bad { color: var(--bad); border-color: var(--bad); }
+.chip.warn { color: var(--warn); border-color: var(--warn); } .chip.acc { color: var(--accent); border-color: var(--accent); }
+.banner { padding: 8px 10px; border-radius: 7px; margin: 8px 0; font-weight: 600; display: none; }
+.banner.show { display: block; }
+.banner.bad { background: rgba(255, 92, 92, .15); color: var(--bad); }
+.banner.warn { background: rgba(240, 180, 41, .15); color: var(--warn); }
+/* chain */
+.chain { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; }
+.node { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; background: var(--panel2); min-width: 150px; }
+.node b { display: block; font-size: 13px; } .node span { font-size: 12px; color: var(--dim); }
+.hop { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 0 8px; font-size: 11px; color: var(--dim); min-width: 120px; }
+.hop .ar { font-size: 18px; line-height: 1; }
+.hop.ok .ar { color: var(--ok); } .hop.bad .ar { color: var(--bad); }
+/* bars */
+.bars { display: grid; grid-template-columns: 52px 1fr 52px; gap: 3px 8px; align-items: center; font-size: 12px; }
+.bar { height: 12px; background: var(--panel2); border-radius: 3px; position: relative; overflow: hidden; }
+.bar::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--line); }
+.bar i { position: absolute; top: 0; bottom: 0; }
+.flow { display: grid; grid-template-columns: 1fr 26px 1.25fr 26px 1fr 26px 1fr; align-items: stretch; gap: 0; }
+@media (max-width: 1100px) { .flow { grid-template-columns: 1fr; } .flow .arrow { transform: rotate(90deg); padding: 4px 0; } }
+.flow .arrow { display: flex; align-items: center; justify-content: center; color: var(--dim); font-size: 20px; }
+.stage { background: var(--panel2); border-radius: 8px; padding: 10px; min-width: 0; }
+.stage p { margin: 6px 0 0; font-size: 12px; color: var(--dim); }
+.hold { border: 1px solid var(--line); border-radius: 7px; padding: 8px; margin-bottom: 8px; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 12px; }
+.kv div:nth-child(odd) { color: var(--dim); }
+table { border-collapse: collapse; width: 100%; font-size: 12px; }
+th, td { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: left; }
+th { color: var(--dim); font-weight: 600; }
+td.num, th.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+input[type=number], input[type=text] { width: 86px; font: 12px var(--mono); background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 5px; padding: 3px 5px; }
+input.changed { border-color: var(--warn); }
+input[type=range] { width: 100%; }
+.groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 10px; }
+.mix td { padding: 2px; } .mix input { width: 56px; text-align: center; }
+canvas { width: 100%; height: 170px; display: block; background: var(--panel2); border-radius: 7px; }
+.log { font: 12px var(--mono); max-height: 220px; overflow: auto; }
+.log div { padding: 1px 0; border-bottom: 1px dashed var(--line); }
+details summary { cursor: pointer; color: var(--accent); }
+.legend i { display: inline-block; width: 10px; height: 3px; vertical-align: middle; margin: 0 4px 0 10px; }
+.keys kbd { font: 11px var(--mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; margin: 0 1px; }
+.keys kbd.down { background: var(--accent); color: #fff; border-color: var(--accent); }
+.own { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; font-size: 13px; }
+@media (max-width: 900px) { .own { grid-template-columns: 1fr; } }
+.own ul { margin: 4px 0 0; padding-left: 18px; } .own li { margin: 2px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ROV Control</h1>
+  <div class="chain" id="chain">
+    <div class="node"><b>Ground station</b><span>this laptop · controller</span></div>
+    <div class="hop" id="hop1"><div class="ar">⟶</div><div id="hop1t">UDP</div></div>
+    <div class="node"><b>Bridge</b><span id="bridgeName">Pi stand-in · pi/bridge.py</span></div>
+    <div class="hop" id="hop2"><div class="ar">⟷</div><div id="hop2t">UART / SWD</div></div>
+    <div class="node"><b>Black Pill F411</b><span id="bpline">vehicle controller</span></div>
+    <div class="hop" id="hop3"><div class="ar">⟲</div><div id="hop3t">telemetry back</div></div>
+  </div>
+  <div class="sp"></div>
+  <button id="themeBtn" title="light / dark">◐</button>
+</header>
+
+<main>
+  <!-- ======== pilot ======== -->
+  <section class="card c3">
+    <h2>Pilot · topside</h2>
+    <button class="big arm" id="armBtn">ARM</button>
+    <div class="banner bad" id="fsBanner">FAILSAFE: link was lost, the Black Pill disarmed itself. Press ARM to re-arm.</div>
+    <div class="banner warn" id="blockBanner"></div>
+    <h3 style="margin-top:10px">Mode <span class="dim" style="font-weight:400">(the board decides if it can)</span></h3>
+    <div class="row" id="modes"></div>
+    <div class="dim" id="modeNote" style="font-size:12px;margin-top:4px"></div>
+    <h3 style="margin-top:12px">Pilot gain</h3>
+    <div class="row"><button data-gain="-1">−</button><b class="mono" id="gain">50%</b><button data-gain="1">+</button>
+      <span class="dim" style="font-size:12px">scales the sticks (topside)</span></div>
+    <h3 style="margin-top:12px">Lights <span class="mono dim" id="lightsV"></span></h3>
+    <input type="range" id="lights" min="0" max="1000" step="50">
+    <h3 style="margin-top:8px">Camera tilt <span class="mono dim" id="tiltV"></span></h3>
+    <input type="range" id="tilt" min="-1000" max="1000" step="50">
+    <h3 style="margin-top:12px">Input</h3>
+    <div id="inputSrc" class="dim" style="font-size:12px"></div>
+    <div class="keys" id="keys" style="margin-top:6px;font-size:12px"></div>
+    <details style="margin-top:8px"><summary>Controller mapping</summary><table id="mapTbl"></table></details>
+  </section>
+
+  <!-- ======== vehicle top view ======== -->
+  <section class="card c5">
+    <h2>Vehicle · thrusters right now <span class="chip" id="frameChip">BlueROV2 vectored</span></h2>
+    <div class="row" style="align-items:flex-start;flex-wrap:nowrap">
+      <svg id="rov" viewBox="0 0 300 380" style="width:56%;max-width:300px;flex:none"></svg>
+      <div style="flex:1;min-width:0">
+        <table id="thrTbl"></table>
+        <p class="dim" style="font-size:12px">Arrow = push on the vehicle (from the mixing matrix × command). Verticals: ▲ lifts, ▼ pushes down.
+          Wrong direction in the water? Flip <span class="mono">THR_REV_Tn</span> — never edit the matrix.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======== board ======== -->
+  <section class="card c4">
+    <h2>Black Pill · state</h2>
+    <div class="row" id="flags" style="margin-bottom:8px"></div>
+    <div class="kv mono" id="boardKv"></div>
+    <h3 style="margin-top:12px">Control loop timing</h3>
+    <div class="bars" id="timing"></div>
+    <p class="dim" style="font-size:12px;margin:6px 0 0">One loop every 1 ms (DMA moves the UART bytes, no RTOS). PID + mixer run every 10 ms.
+      CPU load is the share of each second spent working; the rest it sleeps (WFI).</p>
+  </section>
+
+  <!-- ======== signal path ======== -->
+  <section class="card c12">
+    <h2>Signal path · what happens to your stick, every 10 ms on the Black Pill</h2>
+    <div class="flow">
+      <div class="stage"><h3>① Pilot input <span class="dim">topside</span></h3><div class="bars" id="pilotBars"></div>
+        <p>Sticks after deadzone, expo and pilot gain. Sent as PILOT 50×/s.</p></div>
+      <div class="arrow">➜</div>
+      <div class="stage"><h3>② Holds (PID) <span class="dim">board</span></h3>
+        <div class="hold" id="depthHold"></div><div class="hold" id="hdgHold"></div>
+        <div class="kv mono" id="levelKv"></div>
+        <p>Stick released → the hold locks the current value and the PID takes over that axis. Stick moved → you fly it, target follows.</p></div>
+      <div class="arrow">➜</div>
+      <div class="stage"><h3>③ Demand into mixer <span class="dim">board</span></h3><div class="bars" id="dofBars"></div>
+        <p>Pilot + PID outputs per axis (surge … yaw).</p></div>
+      <div class="arrow">➜</div>
+      <div class="stage"><h3>④ Thrusters <span class="dim">board → ESC</span></h3><div class="bars" id="thrBars"></div>
+        <p>Mixer → slew limit → reverse → output pin. 1100–1900 µs, 1500 = stop.</p></div>
+    </div>
+  </section>
+
+  <!-- ======== plots ======== -->
+  <section class="card c6">
+    <h2>Depth <span class="legend dim"><i style="background:var(--accent)"></i>actual<i style="background:var(--warn)"></i>target</span></h2>
+    <canvas id="plotDepth"></canvas>
+  </section>
+  <section class="card c6">
+    <h2>Heading <span class="legend dim"><i style="background:var(--accent)"></i>actual<i style="background:var(--warn)"></i>target</span></h2>
+    <canvas id="plotHdg"></canvas>
+  </section>
+
+  <!-- ======== params ======== -->
+  <section class="card c12">
+    <div class="row" style="margin-bottom:8px">
+      <h2 style="margin:0">Parameters · stored in the Black Pill's flash</h2>
+      <span class="chip" id="paramState">—</span>
+      <div class="sp"></div>
+      <button id="pRefresh">Re-read</button>
+      <button id="pReset">Defaults</button>
+      <button id="pSave">Save to flash</button>
+    </div>
+    <p class="dim" style="font-size:12px;margin:0 0 10px">Type a value, press Enter: it is live immediately. <b>Save to flash</b> keeps it after a power cycle (disarmed only).
+      Gains can be tuned while armed; wiring and the matrix only while disarmed.</p>
+    <div class="groups" id="paramGroups"></div>
+    <h3 style="margin-top:14px">Mixing matrix <span class="dim" style="font-weight:400">— how much each thruster pushes for each axis</span></h3>
+    <table class="mix" id="mixTbl"></table>
+  </section>
+
+  <!-- ======== who owns what + log ======== -->
+  <section class="card c8">
+    <h2>Who does what</h2>
+    <div class="own">
+      <div><h3>Topside (laptop app)</h3><ul>
+        <li>reads PS4 / PS3 / RC controller</li><li>deadzone, expo, <b>pilot gain</b></li>
+        <li>buttons → requests: arm, mode, lights, tilt</li><li>video, logging, parameter editor</li></ul></div>
+      <div><h3>Pi (bridge)</h3><ul>
+        <li>UDP ⇄ UART, byte for byte</li><li>camera stream</li><li><b>no</b> control logic: if it hangs, the board's failsafe still works</li></ul></div>
+      <div><h3>Black Pill (vehicle)</h3><ul>
+        <li>arming, failsafe (link lost → stop)</li><li>modes + PID holds (depth, heading, level)</li>
+        <li><b>thruster mixing</b>, limit, slew, reverse, pin map</li><li>PWM: 6 ESCs, lights, camera tilt</li>
+        <li>parameters in flash</li></ul></div>
+    </div>
+  </section>
+  <section class="card c4">
+    <h2>Log</h2>
+    <div class="log" id="log"></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const DOFS = ["surge", "sway", "heave", "roll", "pitch", "yaw"];
+const MODES = ["DIRECT", "MANUAL", "STABILIZE", "DEPTH_HOLD"];
+const PINS = ["PA6", "PA7", "PB0", "PB1", "PB6", "PB7"];
+const POS = { T1: "front-right", T2: "front-left", T3: "rear-right", T4: "rear-left", T5: "vertical right", T6: "vertical left" };
+let S = null, prevRxOk = null, prevRxT = 0, boardRxRate = 0;
+const hist = { t: [], depth: [], depthSp: [], hdg: [], hdgSp: [] };
+
+/* app name from the desktop app (?app=ROV%20Bench) */
+{ const n = new URLSearchParams(location.search).get("app"); if (n) { document.title = n; document.querySelector("h1").textContent = n; } }
+/* ---------- theme ---------- */
+function setTheme(t) { cssCache = {}; document.documentElement.dataset.theme = t; try { localStorage.setItem("theme", t); } catch (e) {} }
+try { setTheme(localStorage.getItem("theme") || "dark"); } catch (e) { setTheme("dark"); }
+$("themeBtn").onclick = () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+var cssCache = {};   // var: setTheme() above runs first
+const css = (v) => v in cssCache ? cssCache[v] : (cssCache[v] = getComputedStyle(document.documentElement).getPropertyValue(v).trim());
+/* only touch the DOM when the content really changed: rebuilding unchanged HTML 20x/s froze the page and ate clicks */
+function setHTML(el, h) { if (el._h !== h) { el._h = h; el.innerHTML = h; } }
+
+/* ---------- commands ---------- */
+const post = (path, body) => fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => {});
+const cmd = (c, extra = {}) => post("/cmd", Object.assign({ cmd: c }, extra));
+$("armBtn").onclick = () => cmd(S && S.telem && S.telem.armed ? "disarm" : "arm");
+document.querySelectorAll("[data-gain]").forEach((b) => b.onclick = () => cmd("gain", { d: +b.dataset.gain }));
+$("lights").oninput = (e) => cmd("lights", { value: +e.target.value });
+$("tilt").oninput = (e) => cmd("gimbal", { value: +e.target.value / 1000 });
+$("pRefresh").onclick = () => cmd("param_refresh");
+$("pSave").onclick = () => cmd("param_save");
+$("pReset").onclick = () => { if (confirm("Reset every parameter to its default (in RAM — press Save to keep)?")) cmd("param_reset"); };
+const modesEl = $("modes");
+[1, 2, 3, 0].forEach((m) => {
+  const b = document.createElement("button");
+  b.textContent = MODES[m].replace("_", " "); b.dataset.mode = m;
+  b.title = { 0: "v2 raw per-thruster (old app / thruster test)", 1: "you fly every axis", 2: "keeps heading + level when sticks released (needs IMU)", 3: "+ keeps depth when the heave stick is released (needs depth sensor)" }[m];
+  b.onclick = () => cmd("mode", { mode: m });
+  modesEl.appendChild(b);
+});
+
+/* ---------- keyboard (when no controller) ---------- */
+const HELD = new Set(), HOLDKEYS = "WSADRFQEIK";
+function typing(e) { return e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA"); }
+addEventListener("keydown", (e) => {
+  if (typing(e)) return;
+  const k = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+  if (HOLDKEYS.includes(k)) { HELD.add(k); e.preventDefault(); return; }
+  if (e.repeat) return;
+  if (k === " ") { cmd("disarm"); e.preventDefault(); }
+  else if (k === "1") cmd("mode", { mode: 1 }); else if (k === "2") cmd("mode", { mode: 2 }); else if (k === "3") cmd("mode", { mode: 3 });
+  else if (k === "L") cmd("lights_toggle"); else if (k === "C") cmd("gimbal", { value: 0 });
+  else if (k === "[") cmd("gain", { d: -1 }); else if (k === "]") cmd("gain", { d: 1 });
+});
+addEventListener("keyup", (e) => { const k = e.key.length === 1 ? e.key.toUpperCase() : e.key; HELD.delete(k); });
+addEventListener("blur", () => HELD.clear());
+setInterval(() => post("/input", { keys: [...HELD] }), 50);
+
+/* ---------- drawing helpers ---------- */
+function barRows(el, rows) {   // rows: [label, value -1..1, text]
+  if (el.childElementCount !== rows.length * 3) {
+    el.innerHTML = rows.map(() => '<div class="dim"></div><div class="bar"><i></i></div><div class="mono" style="text-align:right"></div>').join("");
+  }
+  rows.forEach(([lab, v, txt, color], i) => {
+    const c = el.children;
+    c[i * 3].textContent = lab;
+    const bar = c[i * 3 + 1].firstChild, x = Math.max(-1, Math.min(1, v || 0));
+    bar.style.left = (x >= 0 ? 50 : 50 + x * 50) + "%";
+    bar.style.width = Math.abs(x) * 50 + "%";
+    bar.style.background = color || (x >= 0 ? "var(--pos)" : "var(--neg)");
+    c[i * 3 + 2].textContent = txt != null ? txt : (x * 100).toFixed(0) + "%";
+  });
+}
+function param(name) { return S && S.params.find((p) => p.name === name); }
+function pv(name, dflt) { const p = param(name); return p ? p.value : dflt; }
+function thrusterCmds() {   // per thruster T1..T6: command -1..1 as the board outputs it (reverse undone)
+  const t = S && S.telem; if (!t) return [0, 0, 0, 0, 0, 0];
+  return [1, 2, 3, 4, 5, 6].map((n) => {
+    const out = pv("THR_OUT_T" + n, n) - 1, rev = pv("THR_REV_T" + n, 0) > 0.5;
+    const raw = (t.pwm_us[out] - 1500) / 400;
+    return rev ? -raw : raw;
+  });
+}
+function mix(n, d) { return pv(`MIX_T${n}_${d.toUpperCase()}`, 0); }
+
+/* ---------- top view ---------- */
+const TPOS = { 1: [222, 78], 2: [78, 78], 3: [222, 302], 4: [78, 302], 5: [232, 190], 6: [68, 190] };
+function drawRov(cmds) {
+  const svg = $("rov"), acc = css("--accent"), neg = css("--neg"), line = css("--line"), dim = css("--dim"), txt = css("--text"), pan = css("--panel2");
+  let h = `<defs><marker id="ah" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${txt}"/></marker></defs>`;
+  h += `<rect x="40" y="30" width="220" height="320" rx="40" fill="${pan}" stroke="${line}" stroke-width="2"/>`;
+  h += `<path d="M150,8 L162,28 L138,28 z" fill="${css("--bad")}"/><text x="150" y="48" text-anchor="middle" font-size="11" fill="${dim}">FRONT</text>`;
+  // camera + tilt
+  const tilt = S && S.status ? S.status.gimbal_us : 1500, ctr = pv("GMB_CTR_US", 1500);
+  const ang = (tilt >= ctr ? (tilt - ctr) / Math.max(1, pv("GMB_MAX_US", 1900) - ctr) : (tilt - ctr) / Math.max(1, ctr - pv("GMB_MIN_US", 1100))) * 45;
+  h += `<circle cx="150" cy="72" r="9" fill="none" stroke="${dim}" stroke-width="2"/>`;
+  h += `<line x1="150" y1="72" x2="${150 + 22 * Math.cos(ang * Math.PI / 180)}" y2="${72 - 22 * Math.sin(ang * Math.PI / 180)}" stroke="${css("--warn")}" stroke-width="3"/>`;
+  h += `<text x="150" y="100" text-anchor="middle" font-size="10" fill="${dim}">cam ${ang >= 0 ? "+" : ""}${ang.toFixed(0)}°</text>`;
+  const lights = S && S.telem ? (S.telem.lights_us - 1100) / 800 : 0;
+  h += `<rect x="112" y="34" width="76" height="6" rx="3" fill="${css("--warn")}" opacity="${0.15 + 0.85 * lights}"/>`;
+  for (let n = 1; n <= 6; n++) {
+    const [x, y] = TPOS[n], c = cmds[n - 1], col = c >= 0 ? acc : neg, a = Math.abs(c);
+    if (n <= 4) {
+      let fx = mix(n, "sway"), fy = -mix(n, "surge"); const L = Math.hypot(fx, fy) || 1; fx /= L; fy /= L;
+      h += `<g transform="translate(${x},${y}) rotate(${Math.atan2(fy, fx) * 180 / Math.PI})"><rect x="-22" y="-13" width="44" height="26" rx="6" fill="${pan}" stroke="${a > 0.01 ? col : line}" stroke-width="2"/></g>`;
+      if (a > 0.01) {
+        const len = 18 + 52 * a, s = Math.sign(c);
+        h += `<line x1="${x}" y1="${y}" x2="${x + fx * len * s}" y2="${y + fy * len * s}" stroke="${col}" stroke-width="${2 + 4 * a}" marker-end="url(#ah)"/>`;
+      }
+    } else {
+      const up = c * mix(n, "heave");
+      h += `<circle cx="${x}" cy="${y}" r="24" fill="${col}" fill-opacity="${0.12 + 0.6 * a}" stroke="${a > 0.01 ? col : line}" stroke-width="2"/>`;
+      h += `<text x="${x}" y="${y + 7}" text-anchor="middle" font-size="20" fill="${txt}">${a < 0.01 ? "·" : up > 0 ? "▲" : "▼"}</text>`;
+    }
+    h += `<text x="${x}" y="${y + (n <= 4 ? 34 : 42)}" text-anchor="middle" font-size="12" font-weight="700" fill="${txt}">T${n}</text>`;
+    h += `<text x="${x}" y="${y + (n <= 4 ? 47 : 55)}" text-anchor="middle" font-size="10" fill="${dim}">${(c * 100).toFixed(0)}%</text>`;
+  }
+  setHTML(svg, h);
+}
+
+/* ---------- plots ---------- */
+function plot(canvas, series, opts) {
+  const dpr = devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== w * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
+  const g = canvas.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  const all = series.flatMap((s) => s.data).filter((v) => v != null && isFinite(v));
+  if (!all.length) { g.fillStyle = css("--dim"); g.fillText("no data yet", 10, 20); return; }
+  let lo = Math.min(...all), hi = Math.max(...all);
+  const span = Math.max(hi - lo, opts.minSpan); lo = (lo + hi) / 2 - span * 0.6; hi = lo + span * 1.2;
+  const L = 44, R = 8, T = 8, B = 18, X = (i, n) => L + (w - L - R) * i / Math.max(1, n - 1);
+  const Y = (v) => opts.invert ? T + (h - T - B) * (v - lo) / (hi - lo) : h - B - (h - T - B) * (v - lo) / (hi - lo);
+  g.strokeStyle = css("--line"); g.fillStyle = css("--dim"); g.font = "11px " + css("--mono"); g.lineWidth = 1;
+  for (let k = 0; k <= 4; k++) { const v = lo + (hi - lo) * k / 4, y = Y(v); g.beginPath(); g.moveTo(L, y); g.lineTo(w - R, y); g.stroke(); g.fillText(v.toFixed(opts.dec), 2, y + 4); }
+  g.fillText("−30 s", L, h - 4); g.fillText("now", w - R - 22, h - 4);
+  series.forEach((s) => {
+    g.strokeStyle = css(s.color); g.lineWidth = s.width || 2; g.setLineDash(s.dash || []); g.beginPath();
+    let pen = false; s.data.forEach((v, i) => { if (v == null) { pen = false; return; } const x = X(i, s.data.length), y = Y(v); pen ? g.lineTo(x, y) : g.moveTo(x, y); pen = true; });
+    g.stroke(); g.setLineDash([]);
+  });
+}
+function unwrap(arr) { const out = []; let off = 0; arr.forEach((v, i) => { if (v == null) { out.push(null); return; } if (i && arr[i - 1] != null) { const d = v - arr[i - 1]; if (d > 180) off -= 360; if (d < -180) off += 360; } out.push(v + off); }); return out; }
+
+/* ---------- params ---------- */
+const GROUPS = [
+  ["Safety & pilot", /^(FS_|PILOT_)/], ["Thrusters", /^THR_(LIMIT|SLEW)$/], ["Depth hold PID", /^DEPTH_/],
+  ["Heading hold PID", /^HDG_/], ["Levelling (roll / pitch)", /^(ROLL|PITCH)_/], ["Camera tilt servo", /^GMB_/],
+  ["Wiring: output pin", /^THR_OUT_/], ["Wiring: reverse", /^THR_REV_/],
+];
+let paramsBuilt = 0;
+function sendParam(inp) {
+  const v = parseFloat(inp.value); if (!isFinite(v)) return;
+  cmd("param_set", { index: +inp.dataset.idx, value: v }); inp.classList.remove("changed");
+}
+function paramInput(p) {
+  const i = document.createElement("input"); i.type = "number"; i.step = p.flags & 2 ? 1 : "any";
+  i.dataset.idx = p.index; i.dataset.name = p.name; i.title = `default ${+p.default.toPrecision(4)}, range ${+p.min.toPrecision(4)} … ${+p.max.toPrecision(4)}`;
+  i.oninput = () => i.classList.add("changed");
+  i.onkeydown = (e) => { if (e.key === "Enter") { sendParam(i); i.blur(); } if (e.key === "Escape") { i.classList.remove("changed"); i.blur(); } };
+  i.onblur = () => { if (i.classList.contains("changed")) sendParam(i); };
+  return i;
+}
+function fmt(p) { return p.flags & 2 ? String(Math.round(p.value)) : (+p.value.toPrecision(4)).toString(); }
+function buildParams() {
+  const gEl = $("paramGroups"); gEl.innerHTML = "";
+  GROUPS.forEach(([title, re]) => {
+    const ps = S.params.filter((p) => re.test(p.name)); if (!ps.length) return;
+    const card = document.createElement("div"); card.className = "hold";
+    card.innerHTML = `<h3>${title}</h3>`;
+    const t = document.createElement("table"); t.innerHTML = '<tr><th>name</th><th class="num">value</th><th class="num">default</th><th class="num">range</th></tr>';
+    ps.forEach((p) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td class="mono">${p.name}${p.flags & 1 ? ' <span class="chip acc" title="can be changed while armed">live</span>' : ""}</td><td class="num"></td><td class="num dim">${+p.default.toPrecision(4)}</td><td class="num dim">${+p.min.toPrecision(4)} … ${+p.max.toPrecision(4)}</td>`;
+      tr.children[1].appendChild(paramInput(p)); t.appendChild(tr);
+    });
+    card.appendChild(t); gEl.appendChild(card);
+  });
+  const m = $("mixTbl"); m.innerHTML = "<tr><th></th>" + DOFS.map((d) => `<th class="num">${d}</th>`).join("") + "</tr>";
+  for (let n = 1; n <= 6; n++) {
+    const tr = document.createElement("tr"); tr.innerHTML = `<th class="mono">T${n} <span class="dim" style="font-weight:400">${POS["T" + n]}</span></th>`;
+    DOFS.forEach((d) => { const p = param(`MIX_T${n}_${d.toUpperCase()}`); const td = document.createElement("td"); if (p) td.appendChild(paramInput(p)); tr.appendChild(td); });
+    m.appendChild(tr);
+  }
+  paramsBuilt = S.params.length;
+}
+function refreshParams() {
+  if (!S.params.length) return;
+  if (paramsBuilt !== S.params.length) buildParams();
+  const byIdx = new Map(S.params.map((q) => [q.index, q]));
+  document.querySelectorAll("input[data-idx]").forEach((i) => {
+    const p = byIdx.get(+i.dataset.idx); if (!p) return;
+    const v = fmt(p);
+    if (document.activeElement !== i && !i.classList.contains("changed") && i.value !== v) i.value = v;
+    if (/^MIX_/.test(p.name)) { const bg = p.value > 0 ? "rgba(79,163,255,.18)" : p.value < 0 ? "rgba(255,138,76,.18)" : ""; if (i.parentElement.style.background !== bg) i.parentElement.style.background = bg; }
+  });
+}
+
+/* ---------- main refresh ---------- */
+function chip(text, cls) { return `<span class="chip ${cls || ""}">${text}</span>`; }
+function render() {
+  const t = S.telem, s = S.status, p = S.pilot, live = S.telem_age != null && S.telem_age < 0.6;
+  // chain
+  const now = performance.now();
+  if (t) { if (prevRxOk != null && now - prevRxT > 900) { boardRxRate = ((t.rx_ok - prevRxOk + 65536) % 65536) / ((now - prevRxT) / 1000); prevRxOk = t.rx_ok; prevRxT = now; } if (prevRxOk == null) { prevRxOk = t.rx_ok; prevRxT = now; } }
+  const r = S.rates || {};
+  $("hop1").className = "hop " + ((r.tx || 0) > 40 ? "ok" : "bad"); $("hop1t").textContent = `UDP ${(r.tx || 0).toFixed(0)} frames/s → ${S.vehicle}`;
+  $("hop2").className = "hop " + (live && boardRxRate > 20 ? "ok" : "bad"); $("hop2t").textContent = live ? `board got ${boardRxRate.toFixed(0)}/s · bad ${t.rx_bad}` : "no answer from the board";
+  $("hop3").className = "hop " + (live ? "ok" : "bad"); $("hop3t").textContent = live ? `${(r.rx || 0).toFixed(0)} frames/s · ${(S.telem_age * 1000).toFixed(0)} ms old` : "no telemetry";
+  $("bpline").textContent = s ? `mode ${s.mode_name.replace("_", " ")}${s.flag_names.includes("sim") ? " · SIM" : ""}` : "vehicle controller";
+  // arm
+  const armed = live && t.armed, ab = $("armBtn");
+  ab.textContent = S.arm_pending ? "…" : armed ? "ARMED — click to DISARM" : "DISARMED — click to ARM";
+  ab.className = "big " + (armed ? "disarm" : "arm");
+  $("fsBanner").classList.toggle("show", !!(live && t.failsafe));
+  const bb = $("blockBanner"); bb.textContent = s && s.arm_block ? "ARM refused: " + s.arm_block_text : ""; bb.classList.toggle("show", !!(s && s.arm_block && !armed));
+  // modes
+  modesEl.querySelectorAll("button").forEach((b) => b.classList.toggle("on", +b.dataset.mode === (s ? s.mode : -1)));
+  $("modeNote").textContent = s ? (s.mode !== s.mode_req ? `asked ${s.mode_req_name}, board runs ${s.mode_name}: needs a sensor it doesn't have` : `board runs ${s.mode_name}`) : "";
+  $("gain").textContent = p.gain + "%";
+  if (document.activeElement !== $("lights")) $("lights").value = p.lights;
+  if (document.activeElement !== $("tilt")) $("tilt").value = Math.round(p.gimbal * 1000);
+  $("lightsV").textContent = t ? `${(p.lights / 10).toFixed(0)}% → ${t.lights_us} µs` : "";
+  $("tiltV").textContent = s ? `${(p.gimbal * 100).toFixed(0)}% → ${s.gimbal_us} µs (slews)` : "";
+  setHTML($("inputSrc"), p.pad ? `🎮 <b>${p.pad}</b>` : `⌨ keyboard — click this page, then hold the keys${p.pad_error ? ` <span class="chip warn">${p.pad_error}</span>` : " (plug a PS4/PS3 pad in and it takes over)"}`);
+  setHTML($("keys"), "W/S fwd · A/D side · R/F up/down · Q/E turn · I/K tilt<br>".replace(/([A-Z])\/([A-Z])/g, (m, a, b) => `<kbd class="${p.keys.includes(a) ? "down" : ""}">${a}</kbd>/<kbd class="${p.keys.includes(b) ? "down" : ""}">${b}</kbd>`) + "<kbd>Space</kbd> disarm · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> mode · <kbd>L</kbd> lights · <kbd>C</kbd> cam centre · <kbd>[</kbd><kbd>]</kbd> gain");
+  if (S.mapping && !$("mapTbl").childElementCount) {
+    const m = S.mapping; let h = "<tr><th>does</th><th>control</th></tr>";
+    Object.entries(m.axes).forEach(([k, v]) => h += `<tr><td>${k}</td><td class="mono">${v}</td></tr>`);
+    Object.entries(m.buttons).forEach(([k, v]) => h += `<tr><td>${k.replace(/_/g, " ")}</td><td class="mono">${v}</td></tr>`);
+    h += `<tr><td>camera tilt</td><td class="mono">${m.gimbal.up} up / ${m.gimbal.down} down</td></tr>`;
+    $("mapTbl").innerHTML = h + '<tr><td colspan="2" class="dim">SDL names: a=✕ b=○ x=□ y=△ start=Options back=Share. Edit in config/system.yaml</td></tr>';
+  }
+  // board
+  const fl = s ? s.flag_names : [];
+  setHTML($("flags"), !s ? chip("no STATUS yet", "bad") :
+    (fl.includes("sim") ? chip("SIMULATED sensors", "warn") : "") + chip("depth sensor", fl.includes("depth_ok") ? "ok" : "bad") + chip("IMU", fl.includes("imu_ok") ? "ok" : "bad") +
+    (fl.includes("depth_hold") ? chip("holding depth", "acc") : "") + (fl.includes("hdg_hold") ? chip("holding heading", "acc") : "") +
+    (fl.includes("pilot_stale") ? chip("pilot stream stale", "warn") : "") + chip(fl.includes("params_dirty") ? "params: unsaved changes" : fl.includes("params_loaded") ? "params: from flash" : "params: defaults", fl.includes("params_dirty") ? "warn" : ""));
+  setHTML($("boardKv"), t ? [
+    ["armed", t.armed ? "YES" : "no"], ["failsafe", t.failsafe ? "YES" : "no"], ["uptime", (t.uptime_ms / 1000).toFixed(1) + " s"],
+    ["frames ok / bad", `${t.rx_ok} / ${t.rx_bad}`], ["lights", t.lights_us + " µs"], ["camera tilt", s ? s.gimbal_us + " µs" : "—"],
+  ].map(([k, v]) => `<div>${k}</div><div>${v}</div>`).join("") : "<div>waiting for the board…</div><div></div>");
+  if (s) barRows($("timing"), [["loop avg", s.loop_us / 1000, s.loop_us + " µs", "var(--ok)"], ["loop max", s.loop_max_us / 1000, s.loop_max_us + " µs", s.loop_max_us > 800 ? "var(--bad)" : "var(--warn)"], ["CPU", s.load_permille / 1000, (s.load_permille / 10).toFixed(1) + "%", "var(--accent)"]]);
+  // signal path
+  barRows($("pilotBars"), DOFS.map((d, i) => [d, p.dof[i]]));
+  if (s) {
+    barRows($("dofBars"), DOFS.map((d, i) => [d, s.dof[i]]));
+    const dh = fl.includes("depth_hold"), hh = fl.includes("hdg_hold"), dm = s.mode === 3, hm = s.mode >= 2;
+    setHTML($("depthHold"), `<div class="row"><b>Depth</b>${chip(dm ? (dh ? "HOLDING" : armed ? "pilot flying" : "disarmed") : "off in this mode", dh ? "acc" : "")}</div>
+      <div class="kv mono" style="margin:4px 0"><div>actual</div><div>${fl.includes("depth_ok") ? s.depth.toFixed(3) + " m" : "no sensor"}</div><div>target</div><div>${dm ? s.depth_sp.toFixed(3) + " m" : "—"}</div><div>error</div><div>${dm ? ((s.depth - s.depth_sp) * 100).toFixed(1) + " cm" : "—"}</div></div><div class="bars"></div>`);
+    barRows($("depthHold").querySelector(".bars"), [["P", s.depth_pid[0]], ["I", s.depth_pid[1]], ["D", s.depth_pid[2]]]);
+    const he = ((s.heading - s.heading_sp + 540) % 360) - 180;
+    setHTML($("hdgHold"), `<div class="row"><b>Heading</b>${chip(hm ? (hh ? "HOLDING" : armed ? "pilot turning" : "disarmed") : "off in this mode", hh ? "acc" : "")}</div>
+      <div class="kv mono" style="margin:4px 0"><div>actual</div><div>${fl.includes("imu_ok") ? s.heading.toFixed(1) + "°" : "no IMU"}</div><div>target</div><div>${hm ? s.heading_sp.toFixed(1) + "°" : "—"}</div><div>error</div><div>${hm ? he.toFixed(1) + "°" : "—"}</div></div><div class="bars"></div>`);
+    barRows($("hdgHold").querySelector(".bars"), [["P", s.hdg_pid[0]], ["I", s.hdg_pid[1]], ["D", s.hdg_pid[2]]]);
+    setHTML($("levelKv"), `<div>roll</div><div>${s.roll.toFixed(1)}°</div><div>pitch</div><div>${s.pitch.toFixed(1)}°</div>`);
+  }
+  const cmds = thrusterCmds();
+  barRows($("thrBars"), cmds.map((c, i) => [`T${i + 1}`, c, t ? t.pwm_us[pv("THR_OUT_T" + (i + 1), i + 1) - 1] + "µs" : ""]));
+  drawRov(cmds);
+  setHTML($("thrTbl"), '<tr><th>thr</th><th>where</th><th>pin</th><th class="num">cmd</th><th class="num">µs</th></tr>' + cmds.map((c, i) => {
+    const n = i + 1, o = pv("THR_OUT_T" + n, n), rev = pv("THR_REV_T" + n, 0) > 0.5;
+    return `<tr><td class="mono"><b>T${n}</b></td><td class="dim">${POS["T" + n]}</td><td class="mono">${o} · ${PINS[o - 1]}${rev ? ' <span class="chip warn">rev</span>' : ""}</td><td class="num">${(c * 100).toFixed(0)}%</td><td class="num">${t ? t.pwm_us[o - 1] : "—"}</td></tr>`;
+  }).join(""));
+  // history
+  hist.t.push(now); hist.depth.push(s && fl.includes("depth_ok") ? s.depth : null); hist.depthSp.push(s && s.mode === 3 ? s.depth_sp : null);
+  hist.hdg.push(s && fl.includes("imu_ok") ? s.heading : null); hist.hdgSp.push(s && s.mode >= 2 ? s.heading_sp : null);
+  while (hist.t.length && now - hist.t[0] > 30000) Object.values(hist).forEach((a) => a.shift());
+  plot($("plotDepth"), [{ data: hist.depthSp, color: "--warn", dash: [5, 4] }, { data: hist.depth, color: "--accent" }], { invert: true, minSpan: 0.2, dec: 2 });
+  const hu = unwrap(hist.hdg), hsu = unwrap(hist.hdgSp);
+  plot($("plotHdg"), [{ data: hsu, color: "--warn", dash: [5, 4] }, { data: hu, color: "--accent" }], { minSpan: 10, dec: 0 });
+  // params + log
+  refreshParams();
+  const ps = $("paramState");
+  ps.textContent = !S.params.length ? "not read yet" : `${S.params.length} params` + (fl.includes("params_dirty") ? " · unsaved changes" : fl.includes("params_loaded") ? " · saved in flash" : " · defaults");
+  ps.className = "chip " + (fl.includes("params_dirty") ? "warn" : "ok");
+  $("pSave").disabled = armed;
+  setHTML($("log"), S.log.slice().reverse().map(([ts, m]) => `<div><span class="dim">${ts}</span> ${m}</div>`).join(""));
+}
+
+async function tick() {   // 10 Hz is plenty for eyes; the 50 Hz pilot stream runs in the ground station, not here
+  let ok = false;
+  try { S = await (await fetch("/state", { cache: "no-store" })).json(); ok = true; }
+  catch (e) { $("hop1t").textContent = "ground station not running?"; }
+  if (ok && !document.hidden) { try { render(); } catch (e) { console.error(e); } }
+  setTimeout(tick, 100);
+}
+tick();
+</script>
+</body>
+</html>

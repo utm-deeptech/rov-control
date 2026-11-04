@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=ROV Control
+Comment=Full stack: FXTI tether (Wi-Fi fallback), camera, pilot, Black Pill v3 modes/PID/parameters, Pi actions
+Exec=env -u PYTHONPATH PYTHONNOUSERSITE=1 /home/anas-alanqar/rov-work/rov-control/.venv/bin/python /home/anas-alanqar/rov-work/rov-control/bench/station_app.py
+Path=/home/anas-alanqar/rov-work/rov-control
+Icon=applications-engineering
+Terminal=false
+Categories=Development;Engineering;
+StartupWMClass=rov-station

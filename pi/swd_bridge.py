@@ -120,6 +120,9 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
     sym = symbols(a.elf or ELF.format(board=a.board))
+    if "swdlink" in sym and "swd_in" not in sym:
+        raise SystemExit("this is v3 firmware: use bench/swd_link.py (virtual UART over SWD) + pi/bridge.py "
+                         "--serial /tmp/rov-swd instead — see README 'Bench: Black Pill v3'")
     cam = Camera(not a.no_camera)
     IN, IN_LEN, OUT = sym["swd_in"], sym["swd_in_len"], sym["swd_out"]
     oo = OpenOCD(a.tcl_port, "stm32f4x" if a.board == "blackpill" else "stm32f1x")

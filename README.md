@@ -1,5 +1,8 @@
 # ROV Control
 
+> **Picking this up?** Start with [docs/HANDOFF.md](docs/HANDOFF.md): what is on the Black Pill and the bench
+> Jetson right now, how to run the bench, and what is still open.
+
 Laptop app (**Ubuntu 22.04+**, primary; Windows 10/11 also supported, see [docs/WINDOWS.md](docs/WINDOWS.md)) +
 Raspberry Pi bridge + Black Pill firmware for a 6-thruster ROV with one lights channel, live video and
 PS3 / PS4 / PS5 / Xbox controller or RC radio (RadioMaster, ...) support.
@@ -305,3 +308,43 @@ Not yet verified on hardware (do these first on the real ROV, props off):
    directions not yet checked one by one). PS4/PS5 not tried.
 3. Bench test each thruster; fix direction in `thrusters.reverse`, layout in `thrusters.mixing`.
 4. Lights: 50 % should read back 1500 µs and the lights should be half brightness.
+
+## Bench: Black Pill v3 (vehicle controller) without the Pi
+
+Design and reasons: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Protocol: [protocol/PROTOCOL.md](protocol/PROTOCOL.md#v3-additions).
+
+```bash
+# on the Jetson / Pi (repo copy in ~/rov-bench), Black Pill on the ST-LINK
+bash bench/jetson_bench.sh flash sim     # firmware + plant model (fake depth/IMU) so the PID holds can be tried
+bash bench/jetson_bench.sh start swd     # bridge over SWD (no UART wires needed); `start uart` = /dev/ttyTHS1
+# on the laptop
+.venv/bin/python bench/groundstation.py --vehicle <jetson-ip>     # then open http://localhost:8080
+```
+
+## ROV Control app (v3): two modes, one program
+
+| Launcher | Command | For |
+|---|---|---|
+| **ROV Bench** | `bench/station_app.py --bench [IP]` | testing on the LAN (`network.bench_ip`, e.g. the Jetson): no FXTI, no camera, no Pi menu |
+| **ROV Control** | `bench/station_app.py` | the full stack: **FXTI tether** (`network.pi_ip`, Wi-Fi fallback), camera, Pi actions |
+| ROV Control (classic v2) | `topside/app.py` | the original app, kept as the proven fallback |
+
+Both modes run the same code, so the safety behaviour is identical. Only one can run at a time (they would fight
+over the controller).
+
+What each part does:
+
+- camera from the Pi: the old app's video panel and GStreamer receiver, H.264 RTP on `network.video_port`;
+- dashboard: pilot, modes, PID holds, thrusters, parameters;
+- native top bar: link selector, Pi actions (reset/flash the Black Pill, restart the camera, over SSH), **DISARM (Esc)**.
+
+The link is the same as the old app: UDP to `pi/bridge.py` on `control_port`/`telemetry_port`, so it runs over the
+FXTI unchanged.
+
+Robustness:
+
+- DISARM is native, so it works even if the page freezes.
+- A watchdog restarts a frozen page renderer within about 4 s.
+- The link thread survives controller/SDL errors, and disarms if pilot input becomes untrustworthy.
+- If the whole app dies, the board's failsafe disarms within `FS_TIMEOUT_MS`.
+- Log: `logs/station_app.log`.
