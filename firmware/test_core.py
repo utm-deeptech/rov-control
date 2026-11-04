@@ -1,6 +1,7 @@
 """Host test: the Blue Pill protocol core (C) against the Python reference (protocol/rovproto.py)."""
 import ctypes
 import os
+import shutil
 import subprocess
 import sys
 
@@ -15,10 +16,14 @@ CORE = ["core.c", "proto.c", "params.c", "pid.c", "mixer.c"]
 
 
 def build(tmp, name, sim=False):
-    so = str(tmp / f"{name}.so")
+    if shutil.which("gcc") is None:
+        pytest.skip("gcc not installed (Windows: install MSYS2/MinGW or run these in WSL)")
+    win = os.name == "nt"
+    so = str(tmp / (f"{name}.dll" if win else f"{name}.so"))
     srcs = [os.path.join(HERE, "common", f) for f in CORE + (["sim.c"] if sim else [])]
     srcs.append(os.path.join(HERE, "host", "flash_emu.c"))
-    subprocess.check_call(["gcc", "-shared", "-fPIC", "-O1", "-Wall", "-Wextra", "-Werror", "-I", os.path.join(HERE, "common")]
+    subprocess.check_call(["gcc", "-shared"] + ([] if win else ["-fPIC"])
+                          + ["-O1", "-Wall", "-Wextra", "-Werror", "-I", os.path.join(HERE, "common")]
                           + (["-DBENCH_SIM"] if sim else []) + srcs + ["-o", so])
     l = ctypes.CDLL(so)
     l.core_pwm.restype = ctypes.c_uint16

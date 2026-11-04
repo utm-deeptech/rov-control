@@ -8,3 +8,7 @@ firmware/build/
 sim/logs/
 !firmware/prebuilt/*.bin
 /logs/
+dist/
+build/
+*.spec
+rov-control.log

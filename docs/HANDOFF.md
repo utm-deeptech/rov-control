@@ -3,8 +3,8 @@
 Read this first if you are picking the ROV work up. It says what is physically on the Black Pill and the Jetson
 right now, how to get the bench running, and what is still open. Design and reasons: [ARCHITECTURE.md](ARCHITECTURE.md).
 
-Code: `utm-deeptech/rov-control`, branch **`fw-v3-vehicle-controller`** (not merged into `master` yet; `master` is
-the older v2 code that drove the real FXTI + Pi setup).
+Code: `utm-deeptech/rov-control`, branch **`master`**. The v3 work (branch `fw-v3-vehicle-controller`) was merged
+on 2026-11-04 together with the Windows / RC radio / updater work. The classic v2 app is still there as the fallback.
 
 ## The pieces
 

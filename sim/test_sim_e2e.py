@@ -26,19 +26,33 @@ def free_port():
     return p
 
 
-@pytest.fixture
-def system():
-    procs = []
+def _start_pty(ctl_port, tel_port, procs):
     pair = subprocess.Popen([sys.executable, os.path.join(ROOT, "sim", "ptypair.py")],
                             stdout=subprocess.PIPE, text=True)
     procs.append(pair)
     a, b = pair.stdout.readline().split()
-    ctl_port, tel_port = free_port(), free_port()
     procs.append(subprocess.Popen([sys.executable, os.path.join(ROOT, "sim", "fake_blackpill.py"),
                                    "--serial", a, "--quiet"], stdout=subprocess.DEVNULL))
     procs.append(subprocess.Popen([sys.executable, os.path.join(ROOT, "pi", "bridge.py"), "--no-camera", "--serial", b,
                                    "--udp-port", str(ctl_port), "--telem-port", str(tel_port),
                                    "--laptop", "127.0.0.1"], stderr=subprocess.DEVNULL))
+
+
+def _start_host(ctl_port, tel_port, procs):
+    procs.append(subprocess.Popen([sys.executable, os.path.join(ROOT, "sim", "sim_host.py"), "--quiet",
+                                   "--udp-port", str(ctl_port), "--telem-port", str(tel_port),
+                                   "--laptop", "127.0.0.1"], stdout=subprocess.DEVNULL))
+
+
+# "pty": ControlLink -> bridge.py -> pty -> fake_blackpill (Linux/macOS, the real Pi code path)
+# "host": ControlLink -> sim_host.py (sockets only; the same on Windows)
+@pytest.fixture(params=["pty", "host"])
+def system(request):
+    if request.param == "pty" and os.name == "nt":
+        pytest.skip("pty bridge path needs a POSIX system")
+    procs = []
+    ctl_port, tel_port = free_port(), free_port()
+    (_start_pty if request.param == "pty" else _start_host)(ctl_port, tel_port, procs)
     time.sleep(0.8)
     link = ControlLink("127.0.0.1", ctl_port, tel_port, N).start()
     yield link
