@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=ROV Station
+Comment=ROV bench ground station (Black Pill v3): pilot, thrusters, PID, parameters
+Exec=/home/anas-alanqar/rov-work/rov-control/.venv/bin/python /home/anas-alanqar/rov-work/rov-control/bench/station_app.py --vehicle 192.168.0.103
+Path=/home/anas-alanqar/rov-work/rov-control
+Icon=applications-engineering
+Terminal=false
+Categories=Development;Engineering;
+StartupWMClass=station_app.py
