@@ -407,7 +407,7 @@ def make_handler(st):
             self.wfile.write(body)
 
         def do_GET(self):
-            if self.path in ("/", "/index.html"):
+            if self.path.split("?")[0] in ("/", "/index.html"):
                 with open(page, "rb") as f:
                     self._send(200, f.read(), "text/html; charset=utf-8")
             elif self.path.startswith("/state"):

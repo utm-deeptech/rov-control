@@ -250,19 +250,30 @@ bash bench/jetson_bench.sh start swd     # bridge over SWD (no UART wires needed
 .venv/bin/python bench/groundstation.py --vehicle <jetson-ip>     # then open http://localhost:8080
 ```
 
-## ROV Control app (v3)
+## ROV Control app (v3): two modes, one program
 
-`bench/station_app.py` (launcher: **ROV Control**) is one window with:
+| Launcher | Command | For |
+|---|---|---|
+| **ROV Bench** | `bench/station_app.py --bench [IP]` | testing on the LAN (`network.bench_ip`, e.g. the Jetson): no FXTI, no camera, no Pi menu |
+| **ROV Control** | `bench/station_app.py` | the full stack: **FXTI tether** (`network.pi_ip`, Wi-Fi fallback), camera, Pi actions |
+| ROV Control (classic v2) | `topside/app.py` | the original app, kept as the proven fallback |
 
-- the camera from the Pi (the old app's video panel and GStreamer receiver, H.264 RTP on `network.video_port`);
-- the dashboard (pilot, modes, PID holds, thrusters, parameters);
-- a native top bar: link (**TETHER** = the FXTI, `network.pi_ip` · **WI-FI** · **BENCH** with `--vehicle`),
-  Pi actions (reset/flash the Black Pill, restart the camera, over SSH), **DISARM (Esc)**.
+Both modes run the same code, so the safety behaviour is identical. Only one can run at a time (they would fight
+over the controller).
+
+What each part does:
+
+- camera from the Pi: the old app's video panel and GStreamer receiver, H.264 RTP on `network.video_port`;
+- dashboard: pilot, modes, PID holds, thrusters, parameters;
+- native top bar: link selector, Pi actions (reset/flash the Black Pill, restart the camera, over SSH), **DISARM (Esc)**.
 
 The link is the same as the old app: UDP to `pi/bridge.py` on `control_port`/`telemetry_port`, so it runs over the
-FXTI unchanged. The old app (`topside/app.py`, launcher "ROV Control (classic v2)") stays as the proven fallback.
+FXTI unchanged.
 
-Robustness: DISARM is native, so it works even if the page freezes. A watchdog restarts a frozen page
-renderer within about 4 s. The link thread survives controller/SDL errors (it disarms if pilot input becomes
-untrustworthy). If the whole app dies, the board's failsafe disarms it within `FS_TIMEOUT_MS`. Log:
-`logs/station_app.log`.
+Robustness:
+
+- DISARM is native, so it works even if the page freezes.
+- A watchdog restarts a frozen page renderer within about 4 s.
+- The link thread survives controller/SDL errors, and disarms if pilot input becomes untrustworthy.
+- If the whole app dies, the board's failsafe disarms within `FS_TIMEOUT_MS`.
+- Log: `logs/station_app.log`.

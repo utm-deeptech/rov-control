@@ -13,6 +13,7 @@ network:
   control_port: 5005              # laptop -> Pi (UDP) -> UART
   telemetry_port: 5006            # UART -> Pi -> laptop (UDP)
   wifi_pi_ip: 192.168.100.186     # bench without the tether: the Pi's Wi-Fi address (DHCP, may change)
+  bench_ip: 192.168.0.103         # ROV Bench app: the Pi/Jetson running pi/bridge.py on the LAN (no FXTI)
   default_link: tether            # what the app talks to at start: tether | wifi
 
 pi:

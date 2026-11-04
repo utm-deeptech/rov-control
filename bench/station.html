@@ -223,6 +223,8 @@ const POS = { T1: "front-right", T2: "front-left", T3: "rear-right", T4: "rear-l
 let S = null, prevRxOk = null, prevRxT = 0, boardRxRate = 0;
 const hist = { t: [], depth: [], depthSp: [], hdg: [], hdgSp: [] };
 
+/* app name from the desktop app (?app=ROV%20Bench) */
+{ const n = new URLSearchParams(location.search).get("app"); if (n) { document.title = n; document.querySelector("h1").textContent = n; } }
 /* ---------- theme ---------- */
 function setTheme(t) { cssCache = {}; document.documentElement.dataset.theme = t; try { localStorage.setItem("theme", t); } catch (e) {} }
 try { setTheme(localStorage.getItem("theme") || "dark"); } catch (e) { setTheme("dark"); }

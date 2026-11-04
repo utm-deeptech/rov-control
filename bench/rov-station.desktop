@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
 Name=ROV Control
-Comment=ROV camera + pilot + Black Pill v3 (modes, PID, parameters) over the FXTI tether, Wi-Fi or the bench
-Exec=env -u PYTHONPATH PYTHONNOUSERSITE=1 /home/anas-alanqar/rov-work/rov-control/.venv/bin/python /home/anas-alanqar/rov-work/rov-control/bench/station_app.py --vehicle 192.168.0.103
+Comment=Full stack: FXTI tether (Wi-Fi fallback), camera, pilot, Black Pill v3 modes/PID/parameters, Pi actions
+Exec=env -u PYTHONPATH PYTHONNOUSERSITE=1 /home/anas-alanqar/rov-work/rov-control/.venv/bin/python /home/anas-alanqar/rov-work/rov-control/bench/station_app.py
 Path=/home/anas-alanqar/rov-work/rov-control
 Icon=applications-engineering
 Terminal=false
