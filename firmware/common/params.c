@@ -9,7 +9,7 @@
 #include "params.h"
 
 #define MAGIC 0x334D5250u               /* "PRM3" */
-#define REC_WORDS (4u + PARAM_COUNT)
+#define REC_WORDS (5u + PARAM_COUNT)     /* magic, hash, counter, count, values, crc */
 
 float param_v[PARAM_COUNT];
 

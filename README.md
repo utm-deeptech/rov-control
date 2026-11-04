@@ -1,5 +1,8 @@
 # ROV Control
 
+> **Picking this up?** Start with [docs/HANDOFF.md](docs/HANDOFF.md): what is on the Black Pill and the bench
+> Jetson right now, how to run the bench, and what is still open.
+
 Laptop app + Raspberry Pi bridge + Black Pill firmware for a 6-thruster ROV with one lights channel, live video and
 PS3 / PS4 / PS5 / Xbox controller support.
 

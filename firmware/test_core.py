@@ -404,10 +404,20 @@ def test_params_survive_reboot_and_power_cut(lib):
     assert p2["DEPTH_KI"].value == 2.5
     v2.run(60)
     assert v2.status().flag("params_loaded") and not v2.status().flag("params_dirty")
-    rec = 4 + p2["DEPTH_KI"].count                               # words per record; 2nd record = the 2.5 one
+    rec = 5 + p2["DEPTH_KI"].count                               # words per record (header 4 + values + crc); 2nd record = the 2.5 one
     lib.flash_emu_poke(rec + 4 + p2["DEPTH_KI"].index, 0)        # corrupt it: like a power cut mid-save
     v3 = Vehicle(lib)
     assert v3.params()["DEPTH_KI"].value == 1.25                 # previous good record wins
+
+
+def test_every_param_survives_reboot_including_last(lib):
+    v = Vehicle(lib)
+    pr = v.params()
+    last = max(pr.values(), key=lambda p: p.index)               # the record's crc once overwrote this one
+    assert v.set(last.name, 0.5, pr)[0] == 0
+    v.tx(rp.param_save(v.next())); v.run(5)
+    assert v.take(rp.RESULT)[-1][2] == 0
+    assert Vehicle(lib).params()[last.name].value == 0.5
 
 
 def test_param_save_fills_sector_then_erases(lib):
