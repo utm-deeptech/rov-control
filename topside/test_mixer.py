@@ -15,7 +15,7 @@ def test_zero():
 
 
 def test_surge_full():
-    assert M.mix({"surge": 1.0}) == [1000, 1000, 1000, 1000, 0, 0]
+    assert M.mix({"surge": 1.0}) == [-1000, -1000, 1000, 1000, 0, 0]   # vectored: front pair reversed
 
 
 def test_normalised_never_exceeds_1000():

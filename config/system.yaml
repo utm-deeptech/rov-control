@@ -62,14 +62,16 @@ thrusters:
   # Flip a thruster's sign here if it spins the wrong way (props/ESC wiring).
   reverse: [false, false, false, false, false, false]
   # Rows = thrusters (same order as names); columns = [surge, sway, heave, roll, pitch, yaw].
-  # Starting point for a 4-vectored + 2-vertical frame: VERIFY ON THE BENCH (props off).
+  # BlueROV2 "vectored" frame, ArduSub factors (FL=T2 FR=T1 RL=T4 RR=T3 VL=T6 VR=T5). Used by the app in
+  # DIRECT mode only; in MANUAL / hold modes the Black Pill mixes with its own MIX_Tn_* parameters.
+  # VERIFY ON THE BENCH (props off): flip a wrong thruster with reverse:, not by editing this.
   mixing:
-    - [ 1.0,  1.0,  0.0,  0.0, 0.0,  1.0]   # FL
-    - [ 1.0, -1.0,  0.0,  0.0, 0.0, -1.0]   # FR
-    - [ 1.0, -1.0,  0.0,  0.0, 0.0,  1.0]   # RL
-    - [ 1.0,  1.0,  0.0,  0.0, 0.0, -1.0]   # RR
-    - [ 0.0,  0.0,  1.0,  1.0, 0.0,  0.0]   # VL
-    - [ 0.0,  0.0,  1.0, -1.0, 0.0,  0.0]   # VR
+    - [-1.0, -1.0,  0.0,  0.0, 0.0, -1.0]   # FL  (T2)
+    - [-1.0,  1.0,  0.0,  0.0, 0.0,  1.0]   # FR  (T1)
+    - [ 1.0, -1.0,  0.0,  0.0, 0.0,  1.0]   # RL  (T4)
+    - [ 1.0,  1.0,  0.0,  0.0, 0.0, -1.0]   # RR  (T3)
+    - [ 0.0,  0.0, -1.0, -1.0, 0.0,  0.0]   # VL  (T6)
+    - [ 0.0,  0.0, -1.0,  1.0, 0.0,  0.0]   # VR  (T5)
 
 gamepad:
   # SDL standard controller layout: the same names work for PS3, PS4, PS5 and Xbox pads.
@@ -92,6 +94,15 @@ gamepad:
     lights_up: dpup
     lights_down: dpdown
     lights_toggle: a              # Cross (X)
+    # v3 (Black Pill does the holds; the app only asks for a mode)
+    mode_manual: x                # Square
+    mode_depth_hold: y            # Triangle
+    mode_stabilize: dpright       # D-pad right
+    gimbal_center: rightstick     # R3 click
+  gimbal:                         # camera tilt: hold a trigger, speed follows how far it is pressed
+    up_axis: triggerright         # R2
+    down_axis: triggerleft        # L2
+    rate: 0.6                     # full travel per second at full trigger (fraction of -1..1 range / s)
 
 flash:
   address: "0x08000000"

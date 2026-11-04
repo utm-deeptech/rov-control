@@ -1,7 +1,8 @@
-# ROV Link Protocol v2 — contract for the Black Pill firmware
+# ROV Link Protocol v3 — contract for the Black Pill firmware
 
 The reference firmware implementing this is in `firmware/` (`common/core.c`, tested against `protocol/rovproto.py`).
-v2 adds the LIGHTS message and `lights_us` in TELEMETRY.
+v2 added LIGHTS. **v3** adds PILOT (the board mixes + runs the PID holds), STATUS, and parameters —
+see [v3 additions](#v3-additions). Every v2 message is unchanged, so a v2 laptop still works (DIRECT mode).
 
 The laptop and the Blackpill exchange identical binary frames. The laptop sends them over UDP to the
 Raspberry Pi, and the Pi copies them byte for byte onto the UART (and the reverse for telemetry).
@@ -19,6 +20,7 @@ If this document and the simulator ever disagree, this document wins — please 
 | Black Pill (STM32F401/F411) | USART1: PA9 = TX → Pi GPIO15, PA10 = RX ← Pi GPIO14, GND ↔ GND |
 | Thruster outputs FL FR RL RR VL VR | PA6 PA7 PB0 PB1 PB6 PB7 (TIM3 CH1-4, TIM4 CH1-2), 50 Hz |
 | Lights output (all 4 lights) | PB8 (TIM4 CH3), 50 Hz, 1100 µs off … 1900 µs full |
+| Camera tilt servo (v3) | PB9 (TIM4 CH4), 50 Hz, `GMB_MIN_US`..`GMB_MAX_US` |
 | Status LED | PC13: on = armed, linked & disarmed = on while lights are on (else off), fast blink = failsafe, short flash = no link |
 
 ## Frame format
@@ -110,3 +112,39 @@ HEARTBEAT 1000 ms, seq=0    AA 55 04 01 00 E8 03 00 00 <crc lo> <crc hi>
 ```
 Generate exact bytes (with CRC) for unit tests with:
 `python3 -c "import sys; sys.path.insert(0,'protocol'); import rovproto as r; print(r.arm(7,1).hex(' '))"`
+
+## v3 additions
+
+Laptop → board:
+
+| ID | Name | Payload | Rate |
+|----|------|---------|------|
+| 0x05 | PILOT | `u8 mode, u8 0, 6 × i16 dof (-1000..1000: surge sway heave roll pitch yaw), u16 lights 0..1000, i16 tilt -1000..1000` (18 B) | 50 Hz |
+| 0x06 | PARAM_GET | `u8 index` (0xFF = all, streamed 100/s) | on demand |
+| 0x07 | PARAM_SET | `u8 index, f32 value` | on demand → RESULT + PARAM_VALUE |
+| 0x08 | PARAM_SAVE | `u8 0x5A` (disarmed only) | on demand → RESULT |
+| 0x09 | PARAM_RESET | `u8 0x5A` defaults in RAM (disarmed only) | on demand → RESULT |
+
+Board → laptop:
+
+| ID | Name | Payload |
+|----|------|---------|
+| 0x83 | STATUS (20 Hz) | `u8 mode, u8 mode_req, u8 flags, u8 arm_block, u16 loop_us, u16 loop_max_us, u16 load_permille, u16 tilt_us, f32 depth, depth_sp, heading, heading_sp, roll, pitch, 6 × i16 dof demand ×1000, 3 × i16 depth P/I/D ×1000, 3 × i16 heading P/I/D ×1000` (60 B) |
+| 0x84 | PARAM_VALUE | `u8 index, u8 count, u8 flags (1 = changeable armed, 2 = integer), u8 0, f32 value, default, min, max, char name[16]` (36 B) |
+| 0x85 | RESULT | `u8 msg_id, u8 seq, u8 code` — 0 ok, 1 not while armed, 2 flash error, 3 bad argument |
+
+Modes: 0 DIRECT (v2 THRUSTERS drive the outputs, PILOT DOFs ignored), 1 MANUAL, 2 STABILIZE (IMU), 3 DEPTH_HOLD
+(depth sensor). The board boots in DIRECT. PILOT carries the *requested* mode at every frame; the board runs it
+if it has the sensors, else MANUAL (STATUS `mode` vs `mode_req`). THRUSTERS frames are ignored outside DIRECT.
+
+STATUS flags: bit0 depth_ok, 1 imu_ok, 2 holding depth, 3 holding heading, 4 SIM (plant model, not real sensors),
+5 params changed since save, 6 params loaded from flash, 7 PILOT stream stale.
+
+Extra rules (v3):
+- ARM in a pilot mode is refused (still ACKed) unless all PILOT DOFs are within ±100 and THR_OUT_T1..T6 is a
+  permutation of 1..6. `arm_block`: 1 sticks, 2 outputs.
+- No PILOT for `PILOT_TMO_MS` → DOFs treated as 0. The failsafe timer (`FS_TIMEOUT_MS`) is reset by any valid frame.
+- Board mixing: `thr = M · dof`, all scaled down together if any |thr| > 1, × THR_LIMIT, slew-limited by
+  THR_SLEW per second, × −1 if THR_REV_Tn, written to output THR_OUT_Tn. Same mixing as `topside/mixer.py`.
+- Parameters live in flash sector 5 (0x08020000) as append-only CRC'd records; a damaged last record falls back
+  to the previous one; a firmware with a different parameter table loads defaults.

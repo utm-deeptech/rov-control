@@ -237,3 +237,15 @@ Not yet verified on hardware (do these first on the real ROV, props off):
    directions not yet checked one by one). PS4/PS5 not tried.
 3. Bench test each thruster; fix direction in `thrusters.reverse`, layout in `thrusters.mixing`.
 4. Lights: 50 % should read back 1500 µs and the lights should be half brightness.
+
+## Bench: Black Pill v3 (vehicle controller) without the Pi
+
+Design and reasons: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Protocol: [protocol/PROTOCOL.md](protocol/PROTOCOL.md#v3-additions).
+
+```bash
+# on the Jetson / Pi (repo copy in ~/rov-bench), Black Pill on the ST-LINK
+bash bench/jetson_bench.sh flash sim     # firmware + plant model (fake depth/IMU) so the PID holds can be tried
+bash bench/jetson_bench.sh start swd     # bridge over SWD (no UART wires needed); `start uart` = /dev/ttyTHS1
+# on the laptop
+.venv/bin/python bench/groundstation.py --vehicle <jetson-ip>     # then open http://localhost:8080
+```

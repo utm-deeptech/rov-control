@@ -1,7 +1,8 @@
 """Controller (SDL GameController: PS3 / PS4 / PS5 / Xbox, same button names) + keyboard. Poll at 50 Hz.
 
 poll() returns (cmd dict, events list). Events: "arm", "disarm", "gain_up", "gain_down", "lights_up",
-"lights_down", "lights_toggle", "connected:<name>", "disconnected".
+"lights_down", "lights_toggle", "mode_*", "gimbal_center", "connected:<name>", "disconnected".
+Camera tilt is analog (gamepad.gimbal axes): read it from axes[] with gimbal_rate().
 Mapping (standard names, see config/system.yaml gamepad:) is the same for every supported pad.
 """
 import os
@@ -19,6 +20,8 @@ except ImportError:  # pragma: no cover
     pygame = sdlc = None
 
 DOFS = ("surge", "sway", "heave", "roll", "pitch", "yaw")
+EVENTS = ("arm", "disarm", "gain_up", "gain_down", "lights_up", "lights_down", "lights_toggle",
+          "mode_manual", "mode_stabilize", "mode_depth_hold", "gimbal_center")        # v3: modes + camera tilt
 
 # Keyboard: key -> (dof, sign).  Events: SPACE disarm, [ ] gain, L lights toggle, - = lights dim/bright
 KEYMAP = {
@@ -75,7 +78,7 @@ class Gamepad:
         self._btn = {n: getattr(pygame, "CONTROLLER_BUTTON_" + SDL_NAME.get(n, n.upper())) for n in BUTTONS}
         b = gcfg["buttons"]
         self.bind = []                                   # (button name, event)
-        for ev in ("arm", "disarm", "gain_up", "gain_down", "lights_up", "lights_down", "lights_toggle"):
+        for ev in EVENTS:
             names = b.get(ev) or []
             for n in ([names] if isinstance(names, str) else names):
                 if n not in self._btn:
@@ -84,6 +87,13 @@ class Gamepad:
         for dof, a in gcfg["axes"].items():
             if a["axis"] not in self._axis:
                 raise SystemExit(f"config gamepad.axes.{dof}: unknown axis '{a['axis']}' (use {', '.join(AXES)})")
+
+    def gimbal_rate(self):
+        """-1..1 camera tilt speed from the configured axes (triggers by default): + = tilt up."""
+        g = self.cfg.get("gimbal") or {}
+        up = self.axes.get(g.get("up_axis", ""), 0.0)
+        down = self.axes.get(g.get("down_axis", ""), 0.0)
+        return max(-1.0, min(1.0, (up if up > 0.05 else 0.0) - (down if down > 0.05 else 0.0)))
 
     def rumble(self, strength=0.6, ms=200):
         """Short buzz as feedback (connect / arm / disarm). Silently ignored by pads without motors."""

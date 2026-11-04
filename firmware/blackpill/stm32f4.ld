@@ -1,7 +1,7 @@
-/* Common subset of STM32F401CC (256K/64K) and STM32F411CE (512K/128K) */
+/* Common subset of STM32F401CC (256K/64K) and STM32F411CE (512K/128K). Code: sectors 0-4 (128K). */
 MEMORY
 {
-  FLASH (rx)  : ORIGIN = 0x08000000, LENGTH = 256K
+  FLASH (rx)  : ORIGIN = 0x08000000, LENGTH = 128K   /* sector 5 (0x08020000) and up: parameters */
   RAM   (rwx) : ORIGIN = 0x20000000, LENGTH = 64K
 }
 _estack = ORIGIN(RAM) + LENGTH(RAM);
